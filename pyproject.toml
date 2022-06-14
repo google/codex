@@ -1,0 +1,40 @@
+[project]
+name = "jax-codex"
+readme = "README.md"
+requires-python = ">=3.7"
+license = {file = "LICENSE"}
+authors = [{name = "CoDeX authors"}]
+maintainers = [{name = "Johannes Ballé", email = "jballe@google.com"}]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "License :: OSI Approved :: Apache Software License",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Education",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Software Development :: Libraries",
+]
+keywords = [
+    "compression", "data-compression", "machine-learning", "deep-learning",
+]
+dependencies = [
+    "jax ~= 0.3.0",
+    "chex ~= 0.1.0",
+    "absl-py ~= 1.1.0",
+    "tensorflow-probability ~= 0.15",
+]
+dynamic = ["version", "description"]
+
+[project.urls]
+homepage = "https://github.com/google/codex"
+repository = "https://github.com/google/codex"
+
+[build-system]
+requires = ["flit_core >=3.5,<4"]
+build-backend = "flit_core.buildapi"
+
+[tool.flit.module]
+name = "codex"
