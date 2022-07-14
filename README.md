@@ -52,11 +52,11 @@ import codex as cdx
 If you use this library for research purposes, please cite:
 ```
 @software{codex_github,
-  author = {Ballé, Johannes and Agustsson, Eirikur},
-  title = {{CoDeX}: Learned Data Compression in {JAX}},
-  url = {http://github.com/google/codex},
-  version = {0.0.0},
-  year = {2022},
+  author = "Ballé, Johannes and Agustsson, Eirikur",
+  title = "{CoDeX}: Learned Data Compression in {JAX}",
+  url = "http://github.com/google/codex",
+  version = "0.0.0",
+  year = "2022",
 }
 ```
 In the above BibTeX entry, names are top contributors sorted by number of
