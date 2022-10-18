@@ -21,6 +21,11 @@ import jax.numpy as jnp
 # of this interface.
 
 
+def logsum_expbig_minus_expsmall(big, small):
+  """Numerically stable evaluation of `log(exp(big) - exp(small))`."""
+  return jnp.log1p(-jnp.exp(small - big)) + big
+
+
 class ContinuousEntropyModel(nn.Module):
   """Entropy model for continuous random variables."""
 

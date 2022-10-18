@@ -15,4 +15,5 @@
 """Entropy models."""
 
 from codex.ems.continuous import ContinuousEntropyModel
+from codex.ems.deep_factorized import DeepFactorizedEntropyModel
 from codex.ems.distribution import DistributionEntropyModel

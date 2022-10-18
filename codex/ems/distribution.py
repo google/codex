@@ -39,18 +39,13 @@ def _bin_prob(distribution, center, temperature):
       sf_upper < cdf_upper, sf_lower - sf_upper, cdf_upper - cdf_lower)
 
 
-def _logsum_expbig_minus_expsmall(big, small):
-  """Numerically stable evaluation of `log(exp(big) - exp(small))`."""
-  return jnp.log1p(-jnp.exp(small - big)) + big
-
-
 def _bin_bits_even(distribution, center, temperature):
   """Computes information content of quant. bins for symmetric distribution."""
   upper = rounding.soft_round_inverse(.5 - abs(center), temperature)
   lower = upper - 1.
   big = distribution.log_cdf(upper)
   small = distribution.log_cdf(lower)
-  return _logsum_expbig_minus_expsmall(big, small) / -jnp.log(2.)
+  return continuous.logsum_expbig_minus_expsmall(big, small) / -jnp.log(2.)
 
 
 def _bin_bits(distribution, center, temperature):
@@ -64,7 +59,7 @@ def _bin_bits(distribution, center, temperature):
   condition = logsf_upper < logcdf_upper
   big = jnp.where(condition, logsf_lower, logcdf_upper)
   small = jnp.where(condition, logsf_upper, logcdf_lower)
-  return _logsum_expbig_minus_expsmall(big, small) / -jnp.log(2.)
+  return continuous.logsum_expbig_minus_expsmall(big, small) / -jnp.log(2.)
 
 
 class DistributionEntropyModel(continuous.ContinuousEntropyModel):
