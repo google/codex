@@ -12,13 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""All Python tests for CoDeX.
+"""Entropy models."""
 
-This is a convenience file to be included in the pip package.
-"""
-
-import os
-import pytest
-
-# Recursively find and run all unit tests in subdirectories.
-pytest.main([os.path.dirname(__file__)])
+from codex.ems.continuous import ContinuousEntropyModel
+from codex.ems.distribution import DistributionEntropyModel

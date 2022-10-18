@@ -14,86 +14,83 @@
 # ==============================================================================
 """Rounding operations."""
 
-from jax import lax
+from jax import numpy as jnp
 
 
-def soft_round(x, alpha, eps=1e-3):
-  """Differentiable approximation to round().
+def soft_round(x, temperature):
+  """Differentiable approximation to `round`.
 
-  Larger alphas correspond to closer approximations of the round function.
-  If alpha is close to zero, this function reduces to the identity.
-  This is described in Sec. 4.1. in the paper
+  Lower temperatures correspond to closer approximations of the round function.
+  For temperatures approaching infinity, this function resembles the identity.
+
+  This function is described in Sec. 4.1 of the paper
   > "Universally Quantized Neural Compression"<br />
   > Eirikur Agustsson & Lucas Theis<br />
   > https://arxiv.org/abs/2006.09952
+
+  The temperature argument is the reciprocal of `alpha` in the paper.
+
   Args:
-    x: Tensor. Inputs to the rounding function.
-    alpha: Tensor. Controls smoothness of the approximation.
-    eps: Float. Threshold below which soft_round() will return identity.
+    x: Array. Inputs to the function.
+    temperature: Float >= 0. Controls smoothness of the approximation.
 
   Returns:
-    Tensor
+    Array of same shape as `x`.
   """
-  # This guards the gradient of tf.where below against NaNs, while maintaining
-  # correctness, as for alpha < eps the result is ignored.
-  alpha_bounded = lax.max(alpha, eps)
-
-  m = lax.floor(x) + .5
-  r = x - m
-  z = lax.tanh(alpha_bounded / 2.) * 2.
-  y = m + lax.tanh(alpha_bounded * r) / z
-
-  # For very low alphas, soft_round behaves like identity
-  return lax.select(alpha < eps, x, y)
+  if temperature < 1e-4:
+    return jnp.around(x)
+  if temperature > 1e4:
+    return x
+  m = jnp.floor(x) + .5
+  z = 2 * jnp.tanh(.5 / temperature)
+  r = jnp.tanh((x - m) / temperature) / z
+  return m + r
 
 
-def soft_round_inverse(y, alpha, eps=1e-3):
-  """Inverse of soft_round().
+def soft_round_inverse(x, temperature):
+  """Inverse of `soft_round`.
 
-  This is described in Sec. 4.1. in the paper
+  This function is described in Sec. 4.1 of the paper
   > "Universally Quantized Neural Compression"<br />
   > Eirikur Agustsson & Lucas Theis<br />
   > https://arxiv.org/abs/2006.09952
+
+  The temperature argument is the reciprocal of `alpha` in the paper.
+
   Args:
-    y: tf.Tensor. Inputs to this function.
-    alpha: Float or tf.Tensor. Controls smoothness of the approximation.
-    eps: Float. Threshold below which soft_round() is assumed to equal the
-      identity function.
+    x: Array. Inputs to the function.
+    temperature: Float >= 0. Controls smoothness of the approximation.
 
   Returns:
-    tf.Tensor
+    Array of same shape as `x`.
   """
-  # This guards the gradient of tf.where below against NaNs, while maintaining
-  # correctness, as for alpha < eps the result is ignored.
-  alpha_bounded = lax.max(alpha, eps)
-  m = lax.floor(y) + .5
-  s = (y - m) * (lax.tanh(alpha_bounded / 2.) * 2.)
-  r = lax.atanh(s) / alpha_bounded
-  # `r` must be between -.5 and .5 by definition. In case atanh becomes +-inf
-  # due to numerical instability, this prevents the forward pass from yielding
-  # infinite values. Note that it doesn't prevent the backward pass from
-  # returning non-finite values.
-  r = lax.clamp(-.5, r, .5)
-
-  # For very low alphas, soft_round behaves like identity.
-  return lax.select(alpha < eps, y, m + r)
+  if temperature < 1e-4:
+    return jnp.ceil(x) - .5
+  if temperature > 1e4:
+    return x
+  m = jnp.floor(x) + .5
+  z = 2 * jnp.tanh(.5 / temperature)
+  r = jnp.arctanh((x - m) * z) * temperature
+  return m + r
 
 
-def soft_round_conditional_mean(inputs, alpha):
+def soft_round_conditional_mean(x, temperature):
   """Conditional mean of inputs given noisy soft rounded values.
 
-  Computes g(z) = E[Y | s(Y) + U = z] where s is the soft-rounding function,
-  U is uniform between -0.5 and 0.5 and `Y` is considered uniform when truncated
-  to the interval [z-0.5, z+0.5].
+  Computes `g(z) = E[X | Q(X) + U = z]` where `Q` is the soft-rounding function,
+  `U` is uniform between -0.5 and 0.5 and `X` is considered uniform when
+  truncated to the interval `[z - 0.5, z + 0.5]`.
+
   This is described in Sec. 4.1. in the paper
   > "Universally Quantized Neural Compression"<br />
   > Eirikur Agustsson & Lucas Theis<br />
   > https://arxiv.org/abs/2006.09952
+
   Args:
-    inputs: The input tensor.
-    alpha: The softround alpha.
+    x: The input tensor.
+    temperature: Float >= 0. Controls smoothness of the approximation.
 
   Returns:
-    The conditional mean, of same shape as `inputs`.
+    Array of same shape as `x`.
   """
-  return soft_round_inverse(inputs - .5, alpha) + .5
+  return soft_round_inverse(x - .5, temperature) + .5

@@ -14,4 +14,7 @@
 # ==============================================================================
 """COders and DEcoders for jaX."""
 
-__version__ = '0.0.0'
+__version__ = '0.0.1'
+
+from codex import ems
+from codex import ops

@@ -21,10 +21,8 @@ keywords = [
     "compression", "data-compression", "machine-learning", "deep-learning",
 ]
 dependencies = [
-    "jax ~= 0.3.0",
-    "chex ~= 0.1.0",
-    "absl-py ~= 1.1.0",
-    "tensorflow-probability ~= 0.15",
+    "flax ~= 0.6",
+    "jax ~= 0.3",
 ]
 dynamic = ["version", "description"]
 

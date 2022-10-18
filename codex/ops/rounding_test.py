@@ -12,25 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Distributions."""
+"""Tests for rounding operations."""
 
-# pylint: disable=wildcard-import
-from codex.distributions.distribution import *
-from codex.distributions.soft_round import *
-from codex.distributions.uniform_noise import *
-# pylint: enable=wildcard-import
+import chex
+from codex.ops import rounding
+import jax.numpy as jnp
+import pytest
 
-# pylint: disable=undefined-all-variable
-__all__ = [
-    "Logistic",
-    "MonotonicAdapter",
-    "NoisyLogistic",
-    "NoisyNormal",
-    "NoisySoftRoundAdapter",
-    "NoisySoftRoundedLogistic",
-    "NoisySoftRoundedNormal",
-    "Normal",
-    "SoftRoundAdapter",
-    "UniformNoiseAdapter",
-]
-# pylint: enable=undefined-all-variable
+# TODO(jonycgn): Improve unit tests.
+
+
+@pytest.mark.parametrize("t", [.2, 1., jnp.inf])
+def test_inverse_is_consistent(t):
+  x = jnp.linspace(.9, 2.1, 50)
+  y = rounding.soft_round_inverse(rounding.soft_round(x, t), t)
+  chex.assert_trees_all_close(x, y)

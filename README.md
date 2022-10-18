@@ -36,7 +36,7 @@ To test that the installation works correctly, you can run the unit tests with:
 python -m codex.all_tests
 ```
 
-Once the command finishes, you should see a message ```OK (skipped=29)``` or
+Once the command finishes, you should see a message ```13 passed in 2.76s``` or
 similar in the last line.
 
 ## Usage
@@ -52,10 +52,10 @@ import codex as cdx
 If you use this library for research purposes, please cite:
 ```
 @software{codex_github,
-  author = "Ballé, Johannes and Agustsson, Eirikur",
+  author = "Ballé, Johannes and Hwang, Sung Jin and Agustsson, Eirikur",
   title = "{CoDeX}: Learned Data Compression in {JAX}",
   url = "http://github.com/google/codex",
-  version = "0.0.0",
+  version = "0.0.1",
   year = "2022",
 }
 ```
