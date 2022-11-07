@@ -18,7 +18,9 @@ This is a convenience file to be included in the pip package.
 """
 
 import os
+import sys
 import pytest
 
-# Recursively find and run all unit tests in subdirectories.
-pytest.main([os.path.dirname(__file__)])
+if __name__ == "__main__":
+  # Recursively find and run all unit tests in subdirectories.
+  sys.exit(pytest.main([os.path.dirname(__file__)]))

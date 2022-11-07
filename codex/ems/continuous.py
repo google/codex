@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Base class for continuous distribution entropy models."""
+"""Base class for entropy models of continuous distributions."""
 
 import flax.linen as nn
 import jax.numpy as jnp

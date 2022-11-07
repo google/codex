@@ -16,4 +16,6 @@
 
 from codex.ems.continuous import ContinuousEntropyModel
 from codex.ems.deep_factorized import DeepFactorizedEntropyModel
+from codex.ems.discrete import DiscreteEntropyModel
+from codex.ems.discrete import LearnedDiscreteEntropyModel
 from codex.ems.distribution import DistributionEntropyModel

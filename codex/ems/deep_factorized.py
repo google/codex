@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Deep fully factorized entropy model based on cumulative."""
+"""Deep fully factorized entropy model based on cumulative density."""
 
 from typing import Tuple
 from codex.ems import continuous

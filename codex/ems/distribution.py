@@ -63,7 +63,7 @@ def _bin_bits(distribution, center, temperature):
 
 
 class DistributionEntropyModel(continuous.ContinuousEntropyModel):
-  """Entropy model wrapping a Distrax/TFP Distribution object.
+  """Entropy model wrapping a continuous Distrax/TFP Distribution object.
 
   Attributes:
     even_symmetric: Boolean. If `True`, indicates that `distribution` is
@@ -75,7 +75,7 @@ class DistributionEntropyModel(continuous.ContinuousEntropyModel):
 
   @property
   def distribution(self):
-    """Distrax/TFP `Distribution` representing this entropy model.
+    """Continuous Distrax/TFP `Distribution` representing this entropy model.
 
     TODO(jonycgn): Document what parts of the TFP/Distrax API need to be
     implemented.
