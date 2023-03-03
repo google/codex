@@ -91,7 +91,7 @@ def test_gradient_x_is_consistent(t):
 def test_empty_args(t):
 
   def f(x):
-    return jnp.multiply(jnp.square(x))
+    return jnp.square(x)
 
   rng = jax.random.PRNGKey(0)
   x = jnp.linspace(-2.0, 2.0, 50)
