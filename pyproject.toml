@@ -36,3 +36,6 @@ build-backend = "flit_core.buildapi"
 
 [tool.flit.module]
 name = "codex"
+
+[tool.flit.sdist]
+exclude = ["codex/cc"]
