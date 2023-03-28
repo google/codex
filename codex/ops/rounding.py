@@ -14,11 +14,12 @@
 # ==============================================================================
 """Rounding operations."""
 
+import jax
 from jax import numpy as jnp
 
 
 def soft_round(x, temperature):
-  """Differentiable approximation to `round`.
+  """Differentiable approximation to `jnp.round`.
 
   Lower temperatures correspond to closer approximations of the round function.
   For temperatures approaching infinity, this function resembles the identity.
@@ -37,14 +38,20 @@ def soft_round(x, temperature):
   Returns:
     Array of same shape as `x`.
   """
-  if temperature < 1e-4:
-    return jnp.around(x)
-  if temperature > 1e4:
-    return x
-  m = jnp.floor(x) + .5
-  z = 2 * jnp.tanh(.5 / temperature)
-  r = jnp.tanh((x - m) / temperature) / z
-  return m + r
+  def _soft_round(x, t):
+    m = jnp.floor(x) + .5
+    z = 2 * jnp.tanh(.5 / t)
+    r = jnp.tanh((x - m) / t) / z
+    return m + r
+
+  identity_t = lambda z, t: z
+  round_t = lambda z, t: jnp.round(z)
+
+  return jax.lax.cond(
+      temperature < 1e-4,
+      round_t,
+      lambda z, t: jax.lax.cond(t > 1e4, identity_t, _soft_round, z, t),
+      x, temperature)
 
 
 def soft_round_inverse(x, temperature):
@@ -64,14 +71,20 @@ def soft_round_inverse(x, temperature):
   Returns:
     Array of same shape as `x`.
   """
-  if temperature < 1e-4:
-    return jnp.ceil(x) - .5
-  if temperature > 1e4:
-    return x
-  m = jnp.floor(x) + .5
-  z = 2 * jnp.tanh(.5 / temperature)
-  r = jnp.arctanh((x - m) * z) * temperature
-  return m + r
+  def _sr_inverse(x, t):
+    m = jnp.floor(x) + .5
+    z = 2 * jnp.tanh(.5 / t)
+    r = jnp.arctanh((x - m) * z) * t
+    return m + r
+
+  identity_t = lambda z, t: z
+  round_inverse_t = lambda z, t: jnp.ceil(z) - .5
+
+  return jax.lax.cond(
+      temperature < 1e-4,
+      round_inverse_t,
+      lambda z, t: jax.lax.cond(t > 1e4, identity_t, _sr_inverse, z, t),
+      x, temperature)
 
 
 def soft_round_conditional_mean(x, temperature):
@@ -94,3 +107,16 @@ def soft_round_conditional_mean(x, temperature):
     Array of same shape as `x`.
   """
   return soft_round_inverse(x - .5, temperature) + .5
+
+
+@jax.custom_jvp
+def ste_round(x):
+  """`jnp.round` with straight-through gradient estimation."""
+  return jnp.round(x)
+
+
+@ste_round.defjvp
+def ste_round_jvp(primals, tangents):
+  x, = primals
+  x_dot, = tangents
+  return ste_round(x), x_dot

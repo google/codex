@@ -18,3 +18,4 @@ from codex.ops.gradient import perturb_and_apply
 from codex.ops.rounding import soft_round
 from codex.ops.rounding import soft_round_conditional_mean
 from codex.ops.rounding import soft_round_inverse
+from codex.ops.rounding import ste_round
