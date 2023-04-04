@@ -16,7 +16,7 @@
 
 from typing import Tuple
 from codex.ems import continuous
-from codex.ops import rounding
+from codex.ops import quantization
 import flax.linen as nn
 import jax
 import jax.numpy as jnp
@@ -135,7 +135,7 @@ class DeepFactorizedEntropyModel(continuous.ContinuousEntropyModel):
         split_rngs={"params": True})(self.features, self.init_scale)
 
   def bin_bits(self, center, temperature=jnp.inf):
-    upper = rounding.soft_round_inverse(center + .5, temperature)
+    upper = quantization.soft_round_inverse(center + .5, temperature)
     lower = upper - 1.
     logits_upper = self.cdf_logits(upper)
     logits_lower = self.cdf_logits(lower)
@@ -146,7 +146,7 @@ class DeepFactorizedEntropyModel(continuous.ContinuousEntropyModel):
     return continuous.logsum_expbig_minus_expsmall(big, small) / -jnp.log(2.)
 
   def bin_prob(self, center, temperature=jnp.inf):
-    upper = rounding.soft_round_inverse(center + .5, temperature)
+    upper = quantization.soft_round_inverse(center + .5, temperature)
     lower = upper - 1.
     logits_upper = self.cdf_logits(upper)
     logits_lower = self.cdf_logits(lower)

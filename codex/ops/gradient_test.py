@@ -12,21 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for perturb and apply operations."""
+"""Tests for special gradient operations."""
 
 import chex
 from codex.ops import gradient
-from codex.ops import rounding
+from codex.ops import quantization
 import jax
 import jax.numpy as jnp
 import pytest
 
 
 @pytest.mark.parametrize("t", ([7.0]))
-def test_function_evalation_is_consistent(t):
+def test_function_evaluation_is_consistent(t):
 
   def f(x, args):
-    return rounding.soft_round(x, args)
+    return quantization.soft_round(x, args)
 
   rng = jax.random.PRNGKey(0)
   x = jnp.linspace(-2.0, 2.0, 5)

@@ -12,9 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Rounding operations."""
+"""Quantization operations."""
 
+import functools
 import jax
+from jax import nn
 from jax import numpy as jnp
 
 
@@ -107,6 +109,38 @@ def soft_round_conditional_mean(x, temperature):
     Array of same shape as `x`.
   """
   return soft_round_inverse(x - .5, temperature) + .5
+
+
+@functools.partial(jax.custom_jvp, nondiff_argnums=(2,))
+def ste_argmax(logits, temperature, axis=-1):
+  """`argmax` with straight-through gradient estimation.
+
+  The gradient of this function is overridden to be the gradient of:
+  ```
+  nn.softmax(logits / temperature, axis)
+  ```
+
+  Args:
+    logits: Inputs to the function.
+    temperature: Scalar temperature parameter for the custom gradient.
+    axis: The dimension index of `logits` to take the argmax over.
+
+  Returns:
+    One-hot representation of the `argmax` of `logits`.
+  """
+  del temperature  # unused in forward pass
+  index = jnp.argmax(logits, axis=axis)
+  return nn.one_hot(index, logits.shape[axis], axis=axis, dtype=logits.dtype)
+
+
+@ste_argmax.defjvp
+def ste_argmax_jvp(axis, primals, tangents):
+  logits, temperature = primals
+  logits_dot, _ = tangents
+  _, argmax_dot = jax.jvp(
+      lambda l: nn.softmax(l / temperature, axis=axis),
+      (logits,), (logits_dot,))
+  return ste_argmax(logits, temperature), argmax_dot
 
 
 @jax.custom_jvp

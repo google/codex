@@ -16,20 +16,20 @@
 
 from typing import ClassVar
 from codex.ems import continuous
-from codex.ops import rounding
+from codex.ops import quantization
 import jax.numpy as jnp
 
 
 def _bin_prob_even(distribution, center, temperature):
   """Computes probability mass of quant. bins for symmetric distribution."""
-  upper = rounding.soft_round_inverse(.5 - abs(center), temperature)
+  upper = quantization.soft_round_inverse(.5 - abs(center), temperature)
   lower = upper - 1.
   return distribution.cdf(upper) - distribution.cdf(lower)
 
 
 def _bin_prob(distribution, center, temperature):
   """Computes probability mass of quantization bins."""
-  upper = rounding.soft_round_inverse(center + .5, temperature)
+  upper = quantization.soft_round_inverse(center + .5, temperature)
   lower = upper - 1.
   sf_upper = distribution.survival_function(upper)
   sf_lower = distribution.survival_function(lower)
@@ -41,7 +41,7 @@ def _bin_prob(distribution, center, temperature):
 
 def _bin_bits_even(distribution, center, temperature):
   """Computes information content of quant. bins for symmetric distribution."""
-  upper = rounding.soft_round_inverse(.5 - abs(center), temperature)
+  upper = quantization.soft_round_inverse(.5 - abs(center), temperature)
   lower = upper - 1.
   big = distribution.log_cdf(upper)
   small = distribution.log_cdf(lower)
@@ -50,7 +50,7 @@ def _bin_bits_even(distribution, center, temperature):
 
 def _bin_bits(distribution, center, temperature):
   """Computes information content of quantization bins."""
-  upper = rounding.soft_round_inverse(center + .5, temperature)
+  upper = quantization.soft_round_inverse(center + .5, temperature)
   lower = upper - 1.
   logsf_upper = distribution.log_survival_function(upper)
   logsf_lower = distribution.log_survival_function(lower)
