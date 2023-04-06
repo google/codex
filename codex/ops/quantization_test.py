@@ -25,11 +25,25 @@ import pytest
 # TODO(jonycgn): Improve unit tests.
 
 
-@pytest.mark.parametrize("t", [.2, 1., jnp.inf])
+@pytest.mark.parametrize("t", [0.2, 1.0, jnp.inf])
 def test_soft_round_is_inverted_correctly(t):
-  x = jnp.linspace(.9, 2.1, 50)
+  x = jnp.linspace(0.9, 2.1, 50)
   y = quantization.soft_round_inverse(quantization.soft_round(x, t), t)
   chex.assert_trees_all_close(x, y)
+
+
+def test_large_temperature_soft_round_consistent_with_identity():
+  x = jnp.linspace(-2.0, 2.0, 6)
+  y = quantization.soft_round(x, jnp.inf)
+  chex.assert_trees_all_close(x, y)
+
+
+def test_low_temperature_soft_round_near_half_integer():
+  # Test that soft round is accurate exactly near half-integer values
+  for offset in range(-5, 5):
+    x = jnp.linspace(offset - 0.499, offset + 0.499, 100)
+    y = quantization.soft_round(x, 0.0005)
+    chex.assert_trees_all_close(jnp.round(x), y, atol=0.05)
 
 
 def test_ste_round_is_consistent_with_jnp_round():
