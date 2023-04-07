@@ -15,6 +15,7 @@
 """Special gradient operations."""
 
 import jax
+import jax.numpy as jnp
 
 
 def perturb_and_apply(f, x, u, *args):
@@ -33,25 +34,38 @@ def perturb_and_apply(f, x, u, *args):
   Args:
     f: Callable. JAX transformable pointwise function.
     x: Array. The inputs.
-    u: Array. The noise realization to perturb x with.
-    *args: Optional, additional arguments of f.
+    u: Array. The noise realization to perturb `x` with. Must be a sample from a
+      uniform distribution.
+    *args: Optional, additional arguments of `f`.
 
   Returns:
-   A tuple (y, x+u) where y=(f(x+u, *args), f'(x+u, *args)), and u is uniform
-   noise. The gradient of `f` w.r.t. `x` uses expected derivatives w.r.t.
-   the distribution of u.
+    `y=f(x+u, *args)`. The gradient of `y` w.r.t. `x` takes the expectation over
+    the derivatives w.r.t. the distribution of `u` in closed form.
   """
+  # This is the correct output of the function, and allows automatically
+  # computing the gradient wrt. all arguments and closures of f, except x.
+  output = f(jax.lax.stop_gradient(x) + u, *args)
 
+  # Capture all closures as extra arguments of a new function. Then disable
+  # gradient propagation to all arguments except x. Note: closure_convert fails
+  # if f is a module since it tries to hash it, and Flax disallows hashing of
+  # modules with variables. So we have to wrap it in a lambda function.
+  new_f, extra_args = jax.closure_convert(lambda *a: f(*a), x, *args)  # pylint:disable=unnecessary-lambda
+  new_args = jax.lax.stop_gradient(args + tuple(extra_args))
+
+  # Define a function that returns zeros in the forward pass, but defines the
+  # closed-form derivative of f with respect to x.
   @jax.custom_jvp
-  def _perturb_and_apply(x, args):
-    return f(x + u, *args)
+  def zeros_with_df_dx(x):
+    return jnp.zeros_like(x)
 
-  @_perturb_and_apply.defjvp
-  def _perturb_and_apply_jvp(primals, tangents):
-    x, args = primals
-    grad_x, grad_args = tangents
-    dy = (f(x + 0.5, *args) - f(x - 0.5, *args)) * grad_x
-    dy += jax.jvp(lambda t: f(x + u, *t), (args,), (grad_args,))[1]
-    return _perturb_and_apply(x, args), dy
+  @zeros_with_df_dx.defjvp
+  def zeros_with_df_dx_jvp(primals, tangents):
+    x, = primals
+    x_dot, = tangents
+    f_dot = (new_f(x + .5, *new_args) - new_f(x - .5, *new_args)) * x_dot
+    return zeros_with_df_dx(x), f_dot
 
-  return _perturb_and_apply(x, args)
+  # Add the custom function (zeros) to the output, so that gradients wrt. x
+  # flow through the custom function, and all others flow through f itself.
+  return output + zeros_with_df_dx(x)

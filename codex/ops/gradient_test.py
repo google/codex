@@ -16,88 +16,102 @@
 
 import chex
 from codex.ops import gradient
-from codex.ops import quantization
+import flax.linen as nn
 import jax
+from jax import random
 import jax.numpy as jnp
-import pytest
 
 
-@pytest.mark.parametrize("t", ([7.0]))
-def test_function_evaluation_is_consistent(t):
-
-  def f(x, args):
-    return quantization.soft_round(x, args)
-
-  rng = jax.random.PRNGKey(0)
-  x = jnp.linspace(-2.0, 2.0, 5)
-  u = jax.random.uniform(
-      rng, jnp.shape(x), minval=-.5, maxval=.5, dtype=x.dtype)
-  y = gradient.perturb_and_apply(f, x, u, t)
-  chex.assert_trees_all_close(y, f(x + u, t))
+def test_perturb_and_apply_returns_function_output():
+  f = lambda a, b: (a ** 3) * (b ** 2)
+  rng1, rng2, rng3 = random.split(random.PRNGKey(0), 3)
+  x = random.normal(rng1, (10,))
+  y = random.normal(rng2, x.shape)
+  u = random.uniform(rng3, x.shape, minval=-.5, maxval=.5)
+  chex.assert_trees_all_close(
+      gradient.perturb_and_apply(f, x, u, y),
+      f(x + u, y))
 
 
-@pytest.mark.parametrize("t", [[7.0]])
-def test_gradient_x_calculation_is_correct(t):
-
-  def f(x, args):
-    return jnp.multiply(jnp.square(x), args[0])
-
-  t = jnp.asarray(t)
-  rng = jax.random.PRNGKey(0)
-  x = jnp.linspace(-2.0, 2.0, 5)
-  u = jax.random.uniform(
-      rng, jnp.shape(x), minval=-.5, maxval=.5, dtype=x.dtype)
-  loss = lambda x_: jnp.sum(gradient.perturb_and_apply(f, x_, u, t))
-  gradx_1 = jax.grad(loss, argnums=(0,))(x)[0]
-  gradx_2 = jnp.diagonal(jax.jacfwd(f)(x, t))
-  chex.assert_trees_all_close(gradx_1, gradx_2)
+def test_perturb_and_apply_computes_x_gradient_correctly():
+  f = lambda a, b: (a ** 3) * (b ** 2)
+  rng1, rng2, rng3 = random.split(random.PRNGKey(1), 3)
+  x = random.normal(rng1, (10,))
+  y = random.normal(rng2, x.shape)
+  u = random.uniform(rng3, x.shape, minval=-.5, maxval=.5)
+  chex.assert_trees_all_close(
+      jax.grad(lambda x: gradient.perturb_and_apply(f, x, u, y).sum())(x),
+      f(x + .5, y) - f(x - .5, y))
 
 
-@pytest.mark.parametrize("t", [[7.0, 1.0]])
-def test_gradient_args_calculation_is_correct(t):
-
-  def f(x, args):
-    return jnp.multiply(jnp.square(x), args[0]) + args[1]
-
-  t = jnp.asarray(t)
-  rng = jax.random.PRNGKey(0)
-  x = jnp.linspace(-2.0, 2.0, 5)
-  u = jax.random.uniform(
-      rng, jnp.shape(x), minval=-.5, maxval=.5, dtype=x.dtype)
-  loss = lambda t_: jnp.sum(gradient.perturb_and_apply(f, x, u, t_))
-  gradx_1 = jax.grad(loss, argnums=(0,))(t)[0]
-  gradx_2 = jax.jacfwd(f, argnums=(1,))(x + u, t)[0].T @ jnp.ones_like(x)
-  chex.assert_trees_all_close(gradx_1, gradx_2)
+def test_perturb_and_apply_computes_args_gradient_correctly():
+  f = lambda a, b: (a ** 3) * (b ** 2)
+  rng1, rng2, rng3 = random.split(random.PRNGKey(2), 3)
+  x = random.normal(rng1, (10,))
+  y = random.normal(rng2, x.shape)
+  u = random.uniform(rng3, x.shape, minval=-.5, maxval=.5)
+  chex.assert_trees_all_close(
+      jax.grad(lambda y: gradient.perturb_and_apply(f, x, u, y).sum())(y),
+      jax.jvp(f, (x + u, y), (jnp.zeros_like(x), jnp.ones_like(y)))[1])
 
 
-@pytest.mark.parametrize("t", [[7.0]])
-def test_gradient_x_is_consistent(t):
+def test_perturb_and_apply_does_not_fail_in_flax_modules():
+  class InnerWithCall(nn.Module):
+    @nn.compact
+    def __call__(self, x):
+      bias = self.param("bias", nn.initializers.constant(.25), x.shape)
+      return x ** 2 + bias ** 3
 
-  def f(x, args):
-    return jnp.multiply(jnp.square(x), args[0])
+  class InnerWithMethod(nn.Module):
+    @nn.compact
+    def method(self, x):
+      bias = self.param("bias", nn.initializers.constant(.25), x.shape)
+      return x ** 2 + bias ** 3
 
-  t = jnp.asarray(t)
-  rng = jax.random.PRNGKey(0)
-  x = jnp.linspace(-2.0, 2.0, 50)
-  u = jax.random.uniform(
-      rng, jnp.shape(x), minval=-.5, maxval=.5, dtype=x.dtype)
-  loss = lambda x_: jnp.sum(gradient.perturb_and_apply(f, x_, u, t))
-  grad_x = jax.grad(loss, argnums=(0,))(x)[0]
-  dydx = f(x + 0.5, t) - f(x - 0.5, t)
-  chex.assert_trees_all_close(grad_x, dydx)
+  class OuterWithCall(nn.Module):
+    @nn.compact
+    def __call__(self, x, u):
+      inner = InnerWithCall()
+      return gradient.perturb_and_apply(inner, x, u)
 
+  class OuterWithMethod(nn.Module):
+    @nn.compact
+    def __call__(self, x, u):
+      inner = InnerWithMethod()
+      return gradient.perturb_and_apply(inner.method, x, u)
 
-@pytest.mark.parametrize("t", [])
-def test_empty_args(t):
+  class OuterWithLambda(nn.Module):
+    @nn.compact
+    def __call__(self, x, u):
+      inner = InnerWithCall()
+      return gradient.perturb_and_apply(lambda x: 1. * inner(x), x, u)
 
-  def f(x):
-    return jnp.square(x)
+  x = jnp.full((), .75)
+  u = jnp.full((), 1.)
+  p_call = OuterWithCall().init(random.PRNGKey(0), x, u)
+  p_method = OuterWithMethod().init(random.PRNGKey(0), x, u)
+  p_lambda = OuterWithLambda().init(random.PRNGKey(0), x, u)
 
-  rng = jax.random.PRNGKey(0)
-  x = jnp.linspace(-2.0, 2.0, 50)
-  u = jax.random.uniform(
-      rng, jnp.shape(x), minval=-.5, maxval=.5, dtype=x.dtype)
-  loss = lambda x_: jnp.sum(gradient.perturb_and_apply(f, x_, u, t))
-  grad_x = jax.grad(loss, argnums=(0,))(x)[0]
-  dydx = f(x + 0.5) - f(x - 0.5)
-  chex.assert_trees_all_close(grad_x, dydx)
+  x_dot_call = jax.grad(lambda x: OuterWithCall().apply(p_call, x, u))(x)
+  x_dot_method = jax.grad(lambda x: OuterWithMethod().apply(p_method, x, u))(x)
+  x_dot_lambda = jax.grad(lambda x: OuterWithLambda().apply(p_lambda, x, u))(x)
+  chex.assert_trees_all_equal(x_dot_call, 1.5)
+  chex.assert_trees_all_equal(x_dot_method, 1.5)
+  chex.assert_trees_all_equal(x_dot_lambda, 1.5)
+
+  u_dot_call = jax.grad(lambda u: OuterWithCall().apply(p_call, x, u))(u)
+  u_dot_method = jax.grad(lambda u: OuterWithMethod().apply(p_method, x, u))(u)
+  u_dot_lambda = jax.grad(lambda u: OuterWithLambda().apply(p_lambda, x, u))(u)
+  chex.assert_trees_all_equal(u_dot_call, 3.5)
+  chex.assert_trees_all_equal(u_dot_method, 3.5)
+  chex.assert_trees_all_equal(u_dot_lambda, 3.5)
+
+  p_dot_call = jax.grad(lambda p: OuterWithCall().apply(p, x, u))(p_call)
+  p_dot_call, = jax.tree_util.tree_leaves(p_dot_call)
+  p_dot_method = jax.grad(lambda p: OuterWithMethod().apply(p, x, u))(p_method)
+  p_dot_method, = jax.tree_util.tree_leaves(p_dot_method)
+  p_dot_lambda = jax.grad(lambda p: OuterWithLambda().apply(p, x, u))(p_lambda)
+  p_dot_lambda, = jax.tree_util.tree_leaves(p_dot_lambda)
+  chex.assert_trees_all_equal(p_dot_call, .1875)
+  chex.assert_trees_all_equal(p_dot_method, .1875)
+  chex.assert_trees_all_equal(p_dot_lambda, .1875)

@@ -14,6 +14,7 @@
 # ==============================================================================
 """Deep fully factorized entropy model based on cumulative density."""
 
+import math
 from typing import Tuple
 from codex.ems import continuous
 from codex.ops import quantization
@@ -22,7 +23,7 @@ import jax
 import jax.numpy as jnp
 
 
-def _matrix_init(key, shape, scale):
+def matrix_init(key, shape, scale):
   """Initializes matrix with constant value according to init_scale.
 
   This initialization function was designed to avoid the early training
@@ -61,30 +62,33 @@ def _matrix_init(key, shape, scale):
   return jnp.full(shape, jnp.log(jnp.expm1(1 / scale / shape[-1])))
 
 
-def _bias_init(key, shape):
+def bias_init(key, shape):
   return jax.random.uniform(key, shape, minval=-.5, maxval=.5)
 
 
-def _factor_init(key, shape):
+def factor_init(key, shape):
   return jax.nn.initializers.zeros(key, shape)
 
 
-class MonotonicMLP(nn.Module):
+class ParallelMonotonicMLP(nn.Module):
   """MLP that implements monotonically increasing functions by construction."""
   features: Tuple[int, ...]
   init_scale: float
+  num_parallel_dims: int = 1
 
   @nn.compact
   def __call__(self, x):
     scale = self.init_scale ** (1 / (1 + len(self.features)))
-    u = x.reshape((-1, 1))
+    num_mlps = math.prod(x.shape[len(x.shape)-self.num_parallel_dims:])
+    u = x.reshape((-1, num_mlps, 1))
     features = (1,) + self.features + (1,)
-    for k, shape in enumerate(zip(features[:-1], features[1:])):
-      matrix = self.param(f"matrix_{k}", _matrix_init, shape, scale)
-      bias = self.param(f"bias_{k}", _bias_init, shape[-1:])
-      u = u @ jax.nn.softplus(matrix) + bias
+    for k, shape in enumerate(zip(features[1:], features[:-1])):
+      shape = (num_mlps,) + shape
+      matrix = self.param(f"matrix_{k}", matrix_init, shape, scale)
+      bias = self.param(f"bias_{k}", bias_init, shape[:2])
+      u = jnp.einsum("ijk,lik->lij", jax.nn.softplus(matrix), u) + bias
       if k < len(self.features):
-        factor = self.param(f"factor_{k}", _factor_init, shape[-1:])
+        factor = self.param(f"factor_{k}", factor_init, shape[:2])
         u += jnp.tanh(u) * jnp.tanh(factor)
     return u.reshape(x.shape)
 
@@ -118,21 +122,19 @@ class DeepFactorizedEntropyModel(continuous.ContinuousEntropyModel):
       recommended to choose a large enough scale factor such that most values
       initially lie within a region of high likelihood. This improves
       training.
+    num_non_iid_dims: Integer. The number of dimensions on the right of the
+      input which are treated as independent, but non-identically distributed.
+      The remaining dimensions on the left are treated as i.i.d. (like batch
+      dimensions).
   """
   features: Tuple[int, ...] = (3, 3, 3)
   init_scale: float = 10.
-
-  # TODO(jonycgn): This class is currently limited to only modeling distinct
-  # distributions in the last dimension. Consider adding more shaping options.
+  num_non_iid_dims: int = 1
 
   def setup(self):
     super().setup()
-    self.cdf_logits = nn.vmap(
-        MonotonicMLP,
-        in_axes=-1,
-        out_axes=-1,
-        variable_axes={"params": 0},
-        split_rngs={"params": True})(self.features, self.init_scale)
+    self.cdf_logits = ParallelMonotonicMLP(
+        self.features, self.init_scale, self.num_non_iid_dims)
 
   def bin_bits(self, center, temperature=jnp.inf):
     upper = quantization.soft_round_inverse(center + .5, temperature)
