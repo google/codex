@@ -66,6 +66,9 @@ def soft_round_inverse(x, temperature):
 
   The temperature argument is the reciprocal of `alpha` in the paper.
 
+  For convenience, we support temperature = None, which is the same as
+  temperature = inf, which is the same as identity.
+
   Args:
     x: Array. Inputs to the function.
     temperature: Float >= 0. Controls smoothness of the approximation.
@@ -73,6 +76,9 @@ def soft_round_inverse(x, temperature):
   Returns:
     Array of same shape as `x`.
   """
+  if temperature is None:
+    temperature = jnp.inf
+
   def _sr_inverse(x, t):
     m = jnp.floor(x) + .5
     z = 2 * jnp.tanh(.5 / t)

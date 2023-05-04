@@ -14,20 +14,23 @@
 # ==============================================================================
 """Entropy model wrapping a Distrax/TFP Distribution object."""
 
-from typing import ClassVar
+from typing import ClassVar, Optional
 from codex.ems import continuous
 from codex.ops import quantization
+import jax
 import jax.numpy as jnp
 
 
-def _bin_prob_even(distribution, center, temperature):
+def _bin_prob_even(
+    distribution, center, temperature: Optional[jax.Array] = None
+):
   """Computes probability mass of quant. bins for symmetric distribution."""
   upper = quantization.soft_round_inverse(.5 - abs(center), temperature)
   lower = upper - 1.
   return distribution.cdf(upper) - distribution.cdf(lower)
 
 
-def _bin_prob(distribution, center, temperature):
+def _bin_prob(distribution, center, temperature: Optional[jax.Array] = None):
   """Computes probability mass of quantization bins."""
   upper = quantization.soft_round_inverse(center + .5, temperature)
   lower = upper - 1.
@@ -39,8 +42,13 @@ def _bin_prob(distribution, center, temperature):
       sf_upper < cdf_upper, sf_lower - sf_upper, cdf_upper - cdf_lower)
 
 
-def _bin_bits_even(distribution, center, temperature):
+def _bin_bits_even(
+    distribution,
+    center,
+    temperature: Optional[jax.Array] = None,
+):
   """Computes information content of quant. bins for symmetric distribution."""
+  # Note that soft_round_inverse corresponds to identity for temperature = None.
   upper = quantization.soft_round_inverse(.5 - abs(center), temperature)
   lower = upper - 1.
   big = distribution.log_cdf(upper)
@@ -48,8 +56,9 @@ def _bin_bits_even(distribution, center, temperature):
   return continuous.logsum_expbig_minus_expsmall(big, small) / -jnp.log(2.)
 
 
-def _bin_bits(distribution, center, temperature):
+def _bin_bits(distribution, center, temperature: Optional[jax.Array] = None):
   """Computes information content of quantization bins."""
+  # Note that soft_round_inverse corresponds to identity for temperature = None.
   upper = quantization.soft_round_inverse(center + .5, temperature)
   lower = upper - 1.
   logsf_upper = distribution.log_survival_function(upper)
@@ -66,6 +75,8 @@ class DistributionEntropyModel(continuous.ContinuousEntropyModel):
   """Entropy model wrapping a continuous Distrax/TFP Distribution object.
 
   Attributes:
+    distribution: The `Distribution` object. It needs to implement
+      `log_survival_function` and `log_cdf`.
     even_symmetric: Boolean. If `True`, indicates that `distribution` is
       guaranteed to be symmetric around zero (p(x) = p(-x) for any x). This
       simplifies computations in `bin_prob`/`bin_bits`. Defaults to `False`.
@@ -75,19 +86,17 @@ class DistributionEntropyModel(continuous.ContinuousEntropyModel):
 
   @property
   def distribution(self):
-    """Continuous Distrax/TFP `Distribution` representing this entropy model.
-
-    TODO(jonycgn): Document what parts of the TFP/Distrax API need to be
-    implemented.
-    """
+    """Continuous Distrax/TFP `Distribution` representing this entropy model."""
     raise NotImplementedError("Subclass must define distribution.")
 
-  def bin_prob(self, center, temperature=jnp.inf):
+  def bin_prob(self, center, temperature=None):
+    """Calculates the probability of bins. See base class docstring."""
     if self.even_symmetric:
       return _bin_prob_even(self.distribution, center, temperature)
     return _bin_prob(self.distribution, center, temperature)
 
-  def bin_bits(self, center, temperature=jnp.inf):
+  def bin_bits(self, center, temperature=None):
+    """Calculates information content of the bins, see base class docstring."""
     if self.even_symmetric:
       return _bin_bits_even(self.distribution, center, temperature)
     return _bin_bits(self.distribution, center, temperature)
