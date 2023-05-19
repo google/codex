@@ -15,12 +15,15 @@
 """Deep fully factorized entropy model based on cumulative density."""
 
 import math
-from typing import Tuple
+from typing import Optional, Tuple
 from codex.ems import continuous
 from codex.ops import quantization
 import flax.linen as nn
 import jax
 import jax.numpy as jnp
+
+Array = jax.Array
+ArrayLike = jax.typing.ArrayLike
 
 
 def matrix_init(key, shape, scale):
@@ -136,22 +139,30 @@ class DeepFactorizedEntropyModel(continuous.ContinuousEntropyModel):
     self.cdf_logits = ParallelMonotonicMLP(
         self.features, self.init_scale, self.num_non_iid_dims)
 
-  def bin_bits(self, center, temperature=jnp.inf):
+  def bin_bits(self,
+               center: ArrayLike,
+               temperature: Optional[ArrayLike] = None) -> Array:
     upper = quantization.soft_round_inverse(center + .5, temperature)
     lower = upper - 1.
     logits_upper = self.cdf_logits(upper)
     logits_lower = self.cdf_logits(lower)
+    logits_upper, logits_lower = self._maybe_upcast(
+        (logits_upper, logits_lower))
     # sigmoid(u) - sigmoid(l) = sigmoid(-l) - sigmoid(-u)
     condition = logits_upper <= -logits_lower
     big = nn.log_sigmoid(jnp.where(condition, logits_upper, -logits_lower))
     small = nn.log_sigmoid(jnp.where(condition, logits_lower, -logits_upper))
     return continuous.logsum_expbig_minus_expsmall(big, small) / -jnp.log(2.)
 
-  def bin_prob(self, center, temperature=jnp.inf):
+  def bin_prob(self,
+               center: ArrayLike,
+               temperature: Optional[ArrayLike] = None) -> Array:
     upper = quantization.soft_round_inverse(center + .5, temperature)
     lower = upper - 1.
     logits_upper = self.cdf_logits(upper)
     logits_lower = self.cdf_logits(lower)
+    logits_upper, logits_lower = self._maybe_upcast(
+        (logits_upper, logits_lower))
     # sigmoid(u) - sigmoid(l) = sigmoid(-l) - sigmoid(-u)
     sgn = -jnp.sign(logits_upper + logits_lower)
     return abs(nn.sigmoid(sgn * logits_upper) - nn.sigmoid(sgn * logits_lower))

@@ -14,17 +14,17 @@
 # ==============================================================================
 """Base class for entropy models of continuous distributions."""
 
-from typing import Optional
-
+from typing import ClassVar, Optional, Tuple
+import chex
 import flax.linen as nn
 import jax
 import jax.numpy as jnp
 
+Array = jax.Array
+ArrayLike = jax.typing.ArrayLike
+
 # TODO(jonycgn): Think through shape contracts and broadcasting for all methods
 # of this interface.
-
-
-ArrayLike = jax.typing.ArrayLike
 
 
 def logsum_expbig_minus_expsmall(big, small):
@@ -33,19 +33,32 @@ def logsum_expbig_minus_expsmall(big, small):
 
 
 class ContinuousEntropyModel(nn.Module):
-  """Entropy model for continuous random variables."""
+  """Entropy model for continuous random variables.
 
-  def bin_prob(
-      self, center: jax.Array, temperature: Optional[ArrayLike] = None
-  ):
+  Attributes:
+    min_dtype: Minimum data type for probability computations. Inputs will be
+      type promoted against this to ensure numerical accuracy.
+  """
+  min_dtype: ClassVar[chex.ArrayDType] = jnp.float32
+
+  def _maybe_upcast(self, pytree):
+    dtype = jax.dtypes.result_type(
+        self.min_dtype,
+        *(a for a in jax.tree_util.tree_leaves(pytree) if a is not None))
+    return jax.tree_map(
+        lambda a: None if a is None else jnp.asarray(a, dtype=dtype), pytree)
+
+  def bin_prob(self,
+               center: ArrayLike,
+               temperature: Optional[ArrayLike] = None) -> Array:
     """Computes probability mass of bins, see `bin_bits` for explanation."""
     # Default implementation may work in most cases, but may be overridden for
     # performance/stability reasons.
     return 2 ** -self.bin_bits(center, temperature)
 
-  def bin_bits(
-      self, center: jax.Array, temperature: Optional[ArrayLike] = jnp.inf
-  ):
+  def bin_bits(self,
+               center: ArrayLike,
+               temperature: Optional[ArrayLike] = None) -> Array:
     """Computes information content of unit-width quantization bins in bits.
 
     Args:
@@ -88,7 +101,7 @@ class ContinuousEntropyModel(nn.Module):
     """
     raise NotImplementedError()
 
-  def quantization_offset(self):
+  def quantization_offset(self) -> Array:
     """Determines a quantization offset using a heuristic.
 
     Returns a good heuristic value of `o` to use for `jnp.around(x - o) + o`
@@ -105,7 +118,7 @@ class ContinuousEntropyModel(nn.Module):
     """
     raise NotImplementedError()
 
-  def tail_locations(self, tail_mass):
+  def tail_locations(self, tail_mass) -> Tuple[Array, Array]:
     """Determines approximate tail quantiles.
 
     Args:

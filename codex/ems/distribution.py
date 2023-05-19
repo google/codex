@@ -14,23 +14,28 @@
 # ==============================================================================
 """Entropy model wrapping a Distrax/TFP Distribution object."""
 
-from typing import ClassVar, Optional
+from typing import ClassVar, Optional, Tuple
 from codex.ems import continuous
 from codex.ops import quantization
 import jax
 import jax.numpy as jnp
 
+Array = jax.Array
+ArrayLike = jax.typing.ArrayLike
 
-def _bin_prob_even(
-    distribution, center, temperature: Optional[jax.Array] = None
-):
+
+def _bin_prob_even(distribution,
+                   center: ArrayLike,
+                   temperature: Optional[ArrayLike] = None) -> Array:
   """Computes probability mass of quant. bins for symmetric distribution."""
   upper = quantization.soft_round_inverse(.5 - abs(center), temperature)
   lower = upper - 1.
   return distribution.cdf(upper) - distribution.cdf(lower)
 
 
-def _bin_prob(distribution, center, temperature: Optional[jax.Array] = None):
+def _bin_prob(distribution,
+              center: ArrayLike,
+              temperature: Optional[ArrayLike] = None) -> Array:
   """Computes probability mass of quantization bins."""
   upper = quantization.soft_round_inverse(center + .5, temperature)
   lower = upper - 1.
@@ -42,11 +47,9 @@ def _bin_prob(distribution, center, temperature: Optional[jax.Array] = None):
       sf_upper < cdf_upper, sf_lower - sf_upper, cdf_upper - cdf_lower)
 
 
-def _bin_bits_even(
-    distribution,
-    center,
-    temperature: Optional[jax.Array] = None,
-):
+def _bin_bits_even(distribution,
+                   center: ArrayLike,
+                   temperature: Optional[ArrayLike] = None) -> Array:
   """Computes information content of quant. bins for symmetric distribution."""
   # Note that soft_round_inverse corresponds to identity for temperature = None.
   upper = quantization.soft_round_inverse(.5 - abs(center), temperature)
@@ -56,7 +59,9 @@ def _bin_bits_even(
   return continuous.logsum_expbig_minus_expsmall(big, small) / -jnp.log(2.)
 
 
-def _bin_bits(distribution, center, temperature: Optional[jax.Array] = None):
+def _bin_bits(distribution,
+              center: ArrayLike,
+              temperature: Optional[ArrayLike] = None) -> Array:
   """Computes information content of quantization bins."""
   # Note that soft_round_inverse corresponds to identity for temperature = None.
   upper = quantization.soft_round_inverse(center + .5, temperature)
@@ -89,21 +94,26 @@ class DistributionEntropyModel(continuous.ContinuousEntropyModel):
     """Continuous Distrax/TFP `Distribution` representing this entropy model."""
     raise NotImplementedError("Subclass must define distribution.")
 
-  def bin_prob(self, center, temperature=None):
-    """Calculates the probability of bins. See base class docstring."""
+  def bin_prob(self,
+               center: ArrayLike,
+               temperature: Optional[ArrayLike] = None) -> Array:
+    center, temperature = self._maybe_upcast((center, temperature))
     if self.even_symmetric:
       return _bin_prob_even(self.distribution, center, temperature)
     return _bin_prob(self.distribution, center, temperature)
 
-  def bin_bits(self, center, temperature=None):
-    """Calculates information content of the bins, see base class docstring."""
+  def bin_bits(self,
+               center: ArrayLike,
+               temperature: Optional[ArrayLike] = None) -> Array:
+    center, temperature = self._maybe_upcast((center, temperature))
     if self.even_symmetric:
       return _bin_bits_even(self.distribution, center, temperature)
     return _bin_bits(self.distribution, center, temperature)
 
-  def quantization_offset(self):
+  def quantization_offset(self) -> Array:
     return self.distribution.mode()
 
-  def tail_locations(self, tail_mass):
+  def tail_locations(self, tail_mass: ArrayLike) -> Tuple[Array, Array]:
+    tail_mass = self._maybe_upcast(tail_mass)
     return (self.distribution.quantile(tail_mass),
             self.distribution.quantile(1 - tail_mass))
