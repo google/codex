@@ -22,6 +22,28 @@ from jax import random
 import jax.numpy as jnp
 
 
+def test_upper_limit_has_correct_outputs_and_gradients():
+  x = jnp.array([-1, 1], dtype=jnp.float32)
+  fun = lambda x: gradient.upper_limit(x, 0)
+  y, vjp = jax.vjp(fun, x)
+  pos_dydx, = vjp(jnp.ones_like(x))
+  neg_dydx, = vjp(-jnp.ones_like(x))
+  assert (y == jnp.array([-1, 0])).all()
+  assert (pos_dydx == jnp.array([1, 1])).all()
+  assert (neg_dydx == jnp.array([-1, 0])).all()
+
+
+def test_lower_limit_has_correct_outputs_and_gradients():
+  x = jnp.array([-1, 1], dtype=jnp.float32)
+  fun = lambda x: gradient.lower_limit(x, 0)
+  y, vjp = jax.vjp(fun, x)
+  pos_dydx, = vjp(jnp.ones_like(x))
+  neg_dydx, = vjp(-jnp.ones_like(x))
+  assert (y == jnp.array([0, 1])).all()
+  assert (pos_dydx == jnp.array([0, 1])).all()
+  assert (neg_dydx == jnp.array([-1, -1])).all()
+
+
 def test_perturb_and_apply_returns_function_output():
   f = lambda a, b: (a ** 3) * (b ** 2)
   rng1, rng2, rng3 = random.split(random.PRNGKey(0), 3)

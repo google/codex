@@ -16,6 +16,7 @@
 
 from typing import ClassVar, Optional, Tuple
 from codex.ems import continuous
+from codex.ops import gradient
 from codex.ops import quantization
 import jax
 import jax.numpy as jnp
@@ -74,6 +75,45 @@ def _bin_bits(distribution,
   big = jnp.where(condition, logsf_lower, logcdf_upper)
   small = jnp.where(condition, logsf_upper, logcdf_lower)
   return continuous.logsum_expbig_minus_expsmall(big, small) / -jnp.log(2.)
+
+
+def scale_param(param, levels, log_scale_min=-10., log_scale_max=10.):
+  """Returns a scale parameter for a `Distribution`.
+
+  Input could be a neural network output or a model parameter. The function
+  limits the scale to a finite range, which prevents numerical issues, and sets
+  up the scale for quantization, which is needed for range coding.
+
+  Example usage in a conditional entropy model:
+
+  ```
+  class ConditionalEntropyModel(cdx.ems.DistributionEntropyModel):
+    param: Array
+
+    @property
+    def distribution(self):
+      loc = self.param[..., 0::2]
+      scale = cdx.ems.scale_param(self.param[..., 1::2], 20)
+      return tfp.distributions.Normal(loc=loc, scale=scale)
+  ```
+
+  Args:
+    param: An array with expected values in the range [0, `levels`]. Values
+      outside this range are clipped by this function. For example, this could
+      be the output of a neural network ending in a linear layer.
+    levels: Integer. The upper range limit for `param`.
+    log_scale_min: Float. Logarithm of minimal output value.
+    log_scale_max: Float. Logarithm of maximal output value.
+
+  Returns:
+    `jnp.exp(A + B * param)`, where `A` and `B` are chosen such that the active
+    range for `param` is [0, `levels`], and the output of the function
+    is in the range [`jnp.exp(log_scale_min)`, `jnp.exp(log_scale_max)`].
+  """
+  param = gradient.lower_limit(param, 0)
+  param = gradient.upper_limit(param, levels)
+  factor = (log_scale_max - log_scale_min) / levels
+  return jnp.exp(log_scale_min + factor * param)
 
 
 class DistributionEntropyModel(continuous.ContinuousEntropyModel):

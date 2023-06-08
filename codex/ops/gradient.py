@@ -18,6 +18,68 @@ import jax
 import jax.numpy as jnp
 
 
+@jax.custom_vjp
+def upper_limit(inputs, limit):
+  """Limits an array from above, with faked gradients.
+
+  In contrast to `jnp.minimum`, this function never returns a gradient for
+  `limit`, and for values in `inputs` which exceed the limit, it returns a
+  gradient if and only if that gradient is positive.
+
+  Args:
+    inputs: The input array.
+    limit: Array. Upper limit for `inputs`.
+
+  Returns:
+    `jnp.minimum(inputs, limit)`.
+  """
+  return jnp.minimum(inputs, limit)
+
+
+@jax.custom_vjp
+def lower_limit(inputs, limit):
+  """Limits an array from below, with faked gradients.
+
+  In contrast to `jnp.maximum`, this function never returns a gradient for
+  `limit`, and for values in `inputs` which exceed the limit, it returns a
+  gradient if and only if that gradient is negative.
+
+  Args:
+    inputs: The input array.
+    limit: Array. Lower limit for `inputs`.
+
+  Returns:
+    `jnp.maximum(inputs, limit)`.
+  """
+  return jnp.maximum(inputs, limit)
+
+
+def upper_limit_fwd(inputs, limit):
+  return upper_limit(inputs, limit), (inputs <= limit,)
+
+
+def lower_limit_fwd(inputs, limit):
+  return lower_limit(inputs, limit), (inputs >= limit,)
+
+
+def upper_limit_bwd(res, grad):
+  limit_inactive, = res
+  pass_through_if = jnp.logical_or(limit_inactive, grad > 0.)
+  inputs_grad = jnp.where(pass_through_if, grad, 0.)
+  return inputs_grad, None
+
+
+def lower_limit_bwd(res, grad):
+  limit_inactive, = res
+  pass_through_if = jnp.logical_or(limit_inactive, grad < 0.)
+  inputs_grad = jnp.where(pass_through_if, grad, 0.)
+  return inputs_grad, None
+
+
+upper_limit.defvjp(upper_limit_fwd, upper_limit_bwd)
+lower_limit.defvjp(lower_limit_fwd, lower_limit_bwd)
+
+
 def perturb_and_apply(f, x, u, *args):
   """Perturbs the inputs of a pointwise function using JAX.
 

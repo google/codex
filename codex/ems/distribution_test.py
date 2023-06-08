@@ -75,6 +75,33 @@ class TestNormalDistribution:
         em.distribution.prob(x),
         atol=1e-6)
 
+  def test_scale_param_yields_finite_output(self):
+    p = jnp.linspace(-10, 30, 25)
+    x = jnp.linspace(-1e5, 1e5, 23)
+
+    em = self.EntropyModel(loc=0., scale=distribution.scale_param(p, 25))
+
+    bits = em.apply({}, x[:, None], method="bin_bits")
+    assert jnp.isfinite(bits).all(), bits
+    prob = em.apply({}, x[:, None], method="bin_prob")
+    assert jnp.isfinite(prob).all(), prob
+
+  def test_scale_param_yields_finite_gradient(self):
+    p = jnp.linspace(-10, 30, 25)
+    x = jnp.linspace(-1e5, 1e5, 23)
+
+    def bits(x, p):
+      em = self.EntropyModel(loc=0., scale=distribution.scale_param(p, 25))
+      return em.apply({}, x, method="bin_bits")
+
+    grad_x = jax.grad(bits, argnums=0)
+    dbdx = jax.vmap(jax.vmap(grad_x, (None, 0), 0), (0, None), 1)(x, p)
+    assert jnp.isfinite(dbdx).all(), dbdx
+
+    grad_p = jax.grad(bits, argnums=1)
+    dbdp = jax.vmap(jax.vmap(grad_p, (None, 0), 0), (0, None), 1)(x, p)
+    assert jnp.isfinite(dbdp).all(), dbdp
+
 
 class TestLogisticDistribution(TestNormalDistribution):
 
@@ -85,3 +112,14 @@ class TestLogisticDistribution(TestNormalDistribution):
     @property
     def distribution(self):
       return tfp.distributions.Logistic(loc=self.loc, scale=self.scale)
+
+
+class TestLaplaceDistribution(TestNormalDistribution):
+
+  class EntropyModel(distribution.DistributionEntropyModel):
+    loc: Any
+    scale: Any
+
+    @property
+    def distribution(self):
+      return tfp.distributions.Laplace(loc=self.loc, scale=self.scale)

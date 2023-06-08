@@ -14,7 +14,9 @@
 # ==============================================================================
 """Operations."""
 
+from codex.ops.gradient import lower_limit
 from codex.ops.gradient import perturb_and_apply
+from codex.ops.gradient import upper_limit
 from codex.ops.quantization import soft_round
 from codex.ops.quantization import soft_round_conditional_mean
 from codex.ops.quantization import soft_round_inverse
