@@ -37,7 +37,7 @@ class TestNormalDistribution:
 
   def test_can_instantiate_and_evaluate_scalar(self):
     x = jax.random.normal(jax.random.PRNGKey(0), (3, 4, 5))
-    em = self.EntropyModel(loc=0., scale=1.)
+    em = self.EntropyModel(loc=3.4, scale=1.)
     chex.assert_equal_shape((x, em.bin_prob(x)))
     chex.assert_equal_shape((x, em.bin_bits(x)))
 
@@ -51,7 +51,8 @@ class TestNormalDistribution:
     # With the scale parameter going to zero, the adapted distribution should
     # approach a unit-width uniform distribution.
     em = self.EntropyModel(loc=5., scale=1e-7)
-    x = jnp.linspace(4., 6., 10)
+    actual_loc = em.distribution.loc
+    x = jnp.linspace(actual_loc - 1, actual_loc + 1, 10)
     chex.assert_trees_all_close(
         em.bin_prob(x),
         jnp.array([0, 0, 0, 1, 1, 1, 1, 0, 0, 0]))
@@ -59,7 +60,7 @@ class TestNormalDistribution:
   def test_plain_noisy_is_special_case(self):
     # With the temperature parameter going to infinity, the adapted distribution
     # should approach a non-soft-rounded distribution.
-    em = self.EntropyModel(loc=5., scale=3.)
+    em = self.EntropyModel(loc=5.1, scale=3.)
     x = jnp.linspace(-7., -2., 50)
     chex.assert_trees_all_close(
         em.bin_prob(x),
@@ -68,7 +69,7 @@ class TestNormalDistribution:
   def test_non_noisy_is_special_case(self):
     # With the scale parameter going to infinity, the adapted distribution
     # should approach a non-noisy distribution.
-    em = self.EntropyModel(loc=5., scale=3000.)
+    em = self.EntropyModel(loc=-4.3, scale=3000.)
     x = jnp.linspace(2., 7., 50)
     chex.assert_trees_all_close(
         em.bin_prob(x),
@@ -101,6 +102,19 @@ class TestNormalDistribution:
     grad_p = jax.grad(bits, argnums=1)
     dbdp = jax.vmap(jax.vmap(grad_p, (None, 0), 0), (0, None), 1)(x, p)
     assert jnp.isfinite(dbdp).all(), dbdp
+
+
+class TestZeroMeanDistribution(TestNormalDistribution):
+
+  class EntropyModel(distribution.DistributionEntropyModel):
+    loc: Any
+    scale: Any
+
+    even_symmetric = True
+
+    @property
+    def distribution(self):
+      return tfp.distributions.Normal(loc=0., scale=self.scale)
 
 
 class TestLogisticDistribution(TestNormalDistribution):

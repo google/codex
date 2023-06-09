@@ -25,19 +25,16 @@ Array = jax.Array
 ArrayLike = jax.typing.ArrayLike
 
 
-def _bin_prob_even(distribution,
-                   center: ArrayLike,
-                   temperature: Optional[ArrayLike] = None) -> Array:
-  """Computes probability mass of quant. bins for symmetric distribution."""
-  upper = quantization.soft_round_inverse(.5 - abs(center), temperature)
-  lower = upper - 1.
-  return distribution.cdf(upper) - distribution.cdf(lower)
-
-
-def _bin_prob(distribution,
-              center: ArrayLike,
-              temperature: Optional[ArrayLike] = None) -> Array:
-  """Computes probability mass of quantization bins."""
+def bin_prob(distribution,
+             center: ArrayLike,
+             temperature: Optional[ArrayLike] = None,
+             even_symmetric: bool = False) -> Array:
+  """Functional version of `DistributionEntropyModel.bin_prob`."""
+  # Note that soft_round_inverse corresponds to identity for temperature = None.
+  if even_symmetric:
+    upper = quantization.soft_round_inverse(.5 - abs(center), temperature)
+    lower = upper - 1.
+    return distribution.cdf(upper) - distribution.cdf(lower)
   upper = quantization.soft_round_inverse(center + .5, temperature)
   lower = upper - 1.
   sf_upper = distribution.survival_function(upper)
@@ -48,23 +45,18 @@ def _bin_prob(distribution,
       sf_upper < cdf_upper, sf_lower - sf_upper, cdf_upper - cdf_lower)
 
 
-def _bin_bits_even(distribution,
-                   center: ArrayLike,
-                   temperature: Optional[ArrayLike] = None) -> Array:
-  """Computes information content of quant. bins for symmetric distribution."""
+def bin_bits(distribution,
+             center: ArrayLike,
+             temperature: Optional[ArrayLike] = None,
+             even_symmetric: bool = False) -> Array:
+  """Functional version of `DistributionEntropyModel.bin_bits`."""
   # Note that soft_round_inverse corresponds to identity for temperature = None.
-  upper = quantization.soft_round_inverse(.5 - abs(center), temperature)
-  lower = upper - 1.
-  big = distribution.log_cdf(upper)
-  small = distribution.log_cdf(lower)
-  return continuous.logsum_expbig_minus_expsmall(big, small) / -jnp.log(2.)
-
-
-def _bin_bits(distribution,
-              center: ArrayLike,
-              temperature: Optional[ArrayLike] = None) -> Array:
-  """Computes information content of quantization bins."""
-  # Note that soft_round_inverse corresponds to identity for temperature = None.
+  if even_symmetric:
+    upper = quantization.soft_round_inverse(.5 - abs(center), temperature)
+    lower = upper - 1.
+    big = distribution.log_cdf(upper)
+    small = distribution.log_cdf(lower)
+    return continuous.logsum_expbig_minus_expsmall(big, small) / -jnp.log(2.)
   upper = quantization.soft_round_inverse(center + .5, temperature)
   lower = upper - 1.
   logsf_upper = distribution.log_survival_function(upper)
@@ -138,17 +130,13 @@ class DistributionEntropyModel(continuous.ContinuousEntropyModel):
                center: ArrayLike,
                temperature: Optional[ArrayLike] = None) -> Array:
     center, temperature = self._maybe_upcast((center, temperature))
-    if self.even_symmetric:
-      return _bin_prob_even(self.distribution, center, temperature)
-    return _bin_prob(self.distribution, center, temperature)
+    return bin_prob(self.distribution, center, temperature, self.even_symmetric)
 
   def bin_bits(self,
                center: ArrayLike,
                temperature: Optional[ArrayLike] = None) -> Array:
     center, temperature = self._maybe_upcast((center, temperature))
-    if self.even_symmetric:
-      return _bin_bits_even(self.distribution, center, temperature)
-    return _bin_bits(self.distribution, center, temperature)
+    return bin_bits(self.distribution, center, temperature, self.even_symmetric)
 
   def quantization_offset(self) -> Array:
     return self.distribution.mode()

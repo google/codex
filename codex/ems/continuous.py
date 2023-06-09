@@ -29,7 +29,9 @@ ArrayLike = jax.typing.ArrayLike
 
 def logsum_expbig_minus_expsmall(big, small):
   """Numerically stable evaluation of `log(exp(big) - exp(small))`."""
-  return jnp.log1p(-jnp.exp(small - big)) + big
+  # Have to special case `inf` and `-inf` since otherwise we get a NaN
+  # out of the exp (if both small and big are -inf).
+  return jnp.where(jnp.isinf(big), big, jnp.log1p(-jnp.exp(small - big)) + big)
 
 
 class ContinuousEntropyModel(nn.Module):
