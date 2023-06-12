@@ -118,16 +118,16 @@ def perturb_and_apply(f, x, u, *args):
   # Define a function that returns zeros in the forward pass, but defines the
   # closed-form derivative of f with respect to x.
   @jax.custom_jvp
-  def zeros_with_df_dx(x):
+  def zeros_with_df_dx(x, _):
     return jnp.zeros_like(x)
 
   @zeros_with_df_dx.defjvp
   def zeros_with_df_dx_jvp(primals, tangents):
-    x, = primals
-    x_dot, = tangents
-    f_dot = (new_f(x + .5, *new_args) - new_f(x - .5, *new_args)) * x_dot
-    return zeros_with_df_dx(x), f_dot
+    x, a = primals
+    x_dot, _ = tangents
+    f_dot = (new_f(x + .5, *a) - new_f(x - .5, *a)) * x_dot
+    return jnp.zeros_like(x), f_dot
 
   # Add the custom function (zeros) to the output, so that gradients wrt. x
   # flow through the custom function, and all others flow through f itself.
-  return output + zeros_with_df_dx(x)
+  return output + zeros_with_df_dx(x, new_args)
