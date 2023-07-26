@@ -158,8 +158,8 @@ struct RangeAnsStack {
     if ((state >> kLogMinState) == 0 && current != end) {
       CHECK(end + 2 <= current);
       state <<= 16;
-      state += (*--current << 8);
-      state += *--current;
+      current -= 2;
+      state += absl::little_endian::Load16(current);
     }
   }
 
