@@ -20,15 +20,13 @@
 #include <utility>
 #include <vector>
 
-#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "codex/cc/range_ans.h"
 #include "include/pybind11/numpy.h"
 #include "include/pybind11/pybind11.h"
-#include "pybind11_abseil/absl_casters.h"
-#include "pybind11_abseil/status_casters.h"
+#include "include/pybind11/stl.h"
 
 namespace py = ::pybind11;
 
@@ -39,17 +37,9 @@ namespace {
 template <typename T>
 T ThrowNotOk(absl::StatusOr<T>&& status_or) {
   if (!status_or.ok()) {
-    py::object conversion_should_raise_exception = py::cast(status_or.status());
-    LOG(FATAL) << "Exception not raised";
+    throw absl::BadStatusOrAccess(std::move(status_or).status());
   }
   return *std::move(status_or);
-}
-
-void ThrowNotOk(absl::Status&& status) {
-  if (!status.ok()) {
-    py::object conversion_should_raise_exception = py::cast(status);
-    LOG(FATAL) << "Exception not raised";
-  }
 }
 
 template <typename T>
@@ -58,7 +48,7 @@ using ndarray_t = py::array_t<T, py::array::c_style>;
 absl::StatusOr<ndarray_t<uint64_t>> RangeAnsStackMakeDecoder(
     const std::vector<ndarray_t<int32_t>>& pmfs) {
   if (pmfs.empty()) {
-    return absl::InvalidArgumentError("No distribution in the list");
+    return absl::InvalidArgumentError("No pmf in the list");
   }
   int64_t size = pmfs.size() * 2;
   for (const auto& pmf : pmfs) {
@@ -75,7 +65,7 @@ absl::StatusOr<ndarray_t<uint64_t>> RangeAnsStackMakeDecoder(
 
   for (const auto& pmf : pmfs) {
     auto decoder_info = RangeAnsStack::MakeDecoder(pmf);
-    if (!decoder_info.ok()) return decoder_info.status();
+    if (!decoder_info.ok()) return std::move(decoder_info).status();
     auto [decoder_header, decoder] = *std::move(decoder_info);
     header_data[0] = lookup_data - header_data;
     header_data[1] = decoder_header;
@@ -115,7 +105,7 @@ absl::StatusOr<ndarray_t<uint32_t>> RangeAnsStackMakeEncoder(
 
   for (const uint64_t* p = decoder; p < decoder_lookup; p += 2) {
     auto encoder_info = RangeAnsStack::MakeEncoder(*(p + 1), p + *p);
-    if (!encoder_info.ok()) return encoder_info.status();
+    if (!encoder_info.ok()) return std::move(encoder_info).status();
     auto [encoder_header, encoder] = *std::move(encoder_info);
 
     header[0] = lookup - header;
@@ -168,12 +158,8 @@ struct PyRangeAnsStack {
             const ndarray_t<int32_t>& values) {
     const uint32_t* const encoder = encoder_buffer.unchecked<1>().data(0);
     const int64_t size = indices.size();
+    CHECK_EQ(size, values.size());
     const int32_t* index_ptr = indices.data() + size;
-
-    if (size != values.size()) {
-      ThrowNotOk(absl::InvalidArgumentError(
-          "indices and values have different sizes"));
-    }
     const int32_t* value_ptr = values.data() + size;
 
     for (int64_t i = 0; i < size; ++i) {
@@ -200,7 +186,7 @@ struct PyRangeAnsStack {
     auto stack = std::make_unique<PyRangeAnsStack>(0, 0);
     stack->sink = source;
     auto stack_or = RangeAnsPushableStack::Deserialize(&stack->sink);
-    if (!stack_or.ok()) return stack_or.status();
+    if (!stack_or.ok()) return std::move(stack_or).status();
     stack->stack = *std::move(stack_or);
     return stack;
   }
@@ -211,9 +197,12 @@ struct PyRangeAnsStack {
 
 // Module definition.
 PYBIND11_MODULE(range_ans_pybind, m) {
-  pybind11::google::ImportStatusModule();
+  py::register_local_exception<absl::BadStatusOrAccess>(m, "AnsError",
+                                                        PyExc_ValueError);
 
   m.doc() = "Codex RangeAns pybind11 interface";  // Module docstring.
+
+  // See range_ans_pybind.pyi for type-annotated python interface.
 
   // rANS coder ----------------------------------------------------------------
   py::class_<PyRangeAnsStack>(m, "RangeAnsStack")
@@ -224,12 +213,29 @@ PYBIND11_MODULE(range_ans_pybind, m) {
                                stack.stack.Read16BitsIfAvailable();
                                return stack.stack.state;
                              })
-      .def_static("make_decoder", &RangeAnsStackMakeDecoder)
-      .def_static("make_encoder", &RangeAnsStackMakeEncoder)
-      .def("push", &PyRangeAnsStack::Push)
+      .def_static("make_decoder",
+                  [](const std::vector<ndarray_t<int32_t>>& pmfs) {
+                    return ThrowNotOk(RangeAnsStackMakeDecoder(pmfs));
+                  })
+      .def_static("make_encoder",
+                  [](const ndarray_t<uint64_t>& decoder_buffer) {
+                    return ThrowNotOk(RangeAnsStackMakeEncoder(decoder_buffer));
+                  })
+      .def("push",
+           [](PyRangeAnsStack& stack, const ndarray_t<uint32_t>& encoder_buffer,
+              const ndarray_t<int32_t>& indices,
+              const ndarray_t<int32_t>& values) {
+             if (indices.size() != values.size()) {
+               throw absl::BadStatusOrAccess(absl::InvalidArgumentError(
+                   "indices and values have different sizes"));
+             }
+             return stack.Push(encoder_buffer, indices, values);
+           })
       .def("pop", &PyRangeAnsStack::Pop)
       .def("serialize", &PyRangeAnsStack::Serialize)
-      .def_static("deserialize", &PyRangeAnsStack::Deserialize);
+      .def_static("deserialize", [](const py::bytes& source) {
+        return ThrowNotOk(PyRangeAnsStack::Deserialize(source));
+      });
 }
 
 }  // namespace
