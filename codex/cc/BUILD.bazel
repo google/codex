@@ -1,0 +1,28 @@
+load("@pybind11_bazel//:build_defs.bzl", "pybind_extension")
+
+cc_library(
+    name = "range_ans",
+    srcs = ["range_ans.cc"],
+    hdrs = ["range_ans.h"],
+    deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:endian",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/numeric:bits",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+pybind_extension(
+    name = "range_ans_pybind",
+    srcs = ["range_ans_pybind.cc"],
+    deps = [
+        ":range_ans",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+)
