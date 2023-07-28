@@ -20,7 +20,7 @@ python -m pip install -U pytest chex tensorflow-probability
 python -m pip list -v
 
 pushd "${TEMP}"
-python -m codex.all_tests
+pytest --pyargs codex
 popd
 
 deactivate

@@ -27,13 +27,14 @@ find the question or answer more easily later.
 To install CoDeX via `pip`, run the following command:
 
 ```bash
-pip install jax-codex
+python -m pip install jax-codex
 ```
 
 To test that the installation works correctly, you can run the unit tests with:
 
 ```bash
-python -m codex.all_tests
+python -m pip install pytest chex tensorflow-probability
+pytest --pyargs codex
 ```
 
 Once the command finishes, you should see a message ```13 passed in 2.76s``` or
