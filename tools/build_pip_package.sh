@@ -23,6 +23,9 @@ chmod =rw,+X $(bazel info -c opt workspace)/codex/cc/range_ans_pybind.so
 # Clean up bazel files.
 bazel clean
 
+# flit may complain if there is an untracked file.
+git add codex/cc/range_ans_pybind.so
+
 python -m pip install -U flit pip setuptools wheel
 flit build
 
