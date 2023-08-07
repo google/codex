@@ -33,15 +33,17 @@
 
 namespace codex {
 // This is a fork of table-based rANS [1] in JpegXL project [2].
-// The table-based "alias method" can be found in [3].
+// The table-based "alias method" can be found in [3,4].
 //
-// Special thanks to Luca Versari.
+// Special thanks to Luca Versari for explaining the Alias method.
 //
 // [1] Duda, "Asymmetric numeral systems: entropy coding combining speed of
 // Huffman coding with compression rate of arithmetic coding", 2013.
 // https://arxiv.org/abs/1311.2540
 // [2] https://gitlab.com/wg1/jpeg-xl/-/blob/master/lib/jxl/ans_common.h
-// [3] https://fgiesen.wordpress.com/2014/02/18/rans-with-static-probability-distributions/
+// [3] Walker, "An Efficient Method for Generating Discrete Random Variables
+// with General Distributions", 1977.
+// [4] https://fgiesen.wordpress.com/2014/02/18/rans-with-static-probability-distributions/
 struct RangeAnsStack {
   static constexpr int kMaxPrecision = 15;
   static constexpr int kLogMaxState = 32;
@@ -99,7 +101,7 @@ struct RangeAnsStack {
   MakeDecoder(absl::Span<const int32_t> pmf);
 
   // Return value contains pre-computed encoder lookup table and its metadata.
-  // The first item is the metadata/header inforamtion.
+  // The first item is the metadata/header information.
   // The second item is the lookup table.
   static absl::StatusOr<std::tuple<uint16_t, std::unique_ptr<const uint16_t[]>>>
   MakeEncoder(uint64_t header, const uint64_t* decoder);

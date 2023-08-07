@@ -14,13 +14,10 @@
 // =============================================================================
 #include "codex/cc/range_ans.h"
 
-#include <algorithm>
-#include <array>
 #include <cstdint>
 #include <limits>
 #include <memory>
 #include <numeric>
-#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -30,7 +27,6 @@
 #include "absl/numeric/bits.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 
 namespace codex {
@@ -48,7 +44,7 @@ RangeAnsStack::MakeDecoder(absl::Span<const int32_t> pmf) {
 
   const int shift =
       absl::bit_width(pmf.size()) - (absl::has_single_bit(pmf.size()) ? 1 : 0);
-  CHECK_EQ(1 << shift, absl::bit_ceil(pmf.size()));
+  CHECK_EQ(1u << shift, absl::bit_ceil(pmf.size()));
   if (precision < shift) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Alphabet size is too large for precision: precision=", precision,
@@ -68,16 +64,16 @@ RangeAnsStack::MakeDecoder(absl::Span<const int32_t> pmf) {
     return value | (freq << 16) | (freq << 48);
   };
 
-  const int capacity = 1 << (precision - shift);
+  const uint32_t capacity = 1u << (precision - shift);
   std::vector<int> overfull;
   std::vector<int> underfull;
   size_t i = 0;
   for (; i < pmf.size(); ++i) {
-    const int32_t freq = pmf[i];
-    if (freq < 0) {
+    if (pmf[i] < 0) {
       return absl::InvalidArgumentError(
-          absl::StrCat("PMF contains negative value: pmf[", i, "]=", freq));
+          absl::StrCat("PMF contains negative value: pmf[", i, "]=", pmf[i]));
     }
+    const uint32_t freq = pmf[i];
     lookup[i] = freq;
 
     if (freq < capacity) {
@@ -88,10 +84,12 @@ RangeAnsStack::MakeDecoder(absl::Span<const int32_t> pmf) {
       lookup[i] = make_whole_entry(i, freq);
     }
   }
-  for (; i < (1 << shift); ++i) {
+  for (; i < (1u << shift); ++i) {
     lookup[i] = 0;
     underfull.push_back(i);
   }
+
+  const int pmf_size = pmf.size();
 
   while (!underfull.empty()) {
     CHECK(!overfull.empty());
@@ -105,10 +103,10 @@ RangeAnsStack::MakeDecoder(absl::Span<const int32_t> pmf) {
     CHECK_LT(c_under, capacity);
     const int32_t room = capacity - c_under;
 
-    const int32_t f_under = i_under < pmf.size() ? pmf[i_under] : 0;
+    const int32_t f_under = (i_under < pmf_size) ? pmf[i_under] : 0;
     const int32_t f_over = pmf[i_over];
 
-    CHECK(i_under < pmf.size() || c_under == 0);
+    CHECK(i_under < pmf_size || c_under == 0);
     CHECK_GT(c_over, capacity);
     c_under =
         make_split_entry(i_over, f_over, c_over - capacity, c_under, f_under);
