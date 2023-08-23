@@ -16,6 +16,7 @@
 #define CODEX_CC_RANGE_ANS_H_
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <memory>
@@ -23,6 +24,7 @@
 #include <tuple>
 #include <utility>
 
+#include "absl/base/casts.h"
 #include "absl/base/internal/endian.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -94,7 +96,7 @@ struct RangeAnsStack {
   // REQUIRES: 0 < precision <= 15.
   //
   // Return value contains pre-computed decoder lookup table and its metadata.
-  // The first item is the metadata/header inforamtion.
+  // The first item is the metadata/header information.
   // The second item is the lookup table of size std::bit_ceil(pmf.size()).
   //
   static absl::StatusOr<std::tuple<uint64_t, std::unique_ptr<const uint64_t[]>>>
@@ -156,6 +158,27 @@ struct RangeAnsStack {
     return is_value0 ? major : value1;
   }
 
+  // Decodes a gamma code from the stack.
+  //
+  // Gamma code here is a fallback method in case one needs to encode and decode
+  // values beyond the maximum value allowed in the distribution being used.
+  //
+  // Gamma codes work on strictly positive numbers. Therefore the returned value
+  // is always positive and non-zero.
+  //
+  // The interface comes with two flavors. PopGammaCode16() decodes values up to
+  // 16 bits, i.e., the maximum value it may decode is 2**16 - 1 = 65535.
+  // PopGammaCode32() may decode values up to 32 bits. In general, 32-bit
+  // version should be preferred, unless the decoder side is certain that the
+  // value being decoded fits in 16 bits and wishes to use the marginally faster
+  // decode path.
+  //
+  // See the implementation for the implementation details.
+  //
+  // [1] https://en.wikipedia.org/wiki/Elias_gamma_coding
+  uint32_t PopGammaCode16();
+  uint32_t PopGammaCode32();
+
   void Read16BitsIfAvailable() {
     if ((state >> kLogMinState) == 0 && current != end) {
       CHECK(end + 2 <= current);
@@ -190,32 +213,20 @@ struct RangeAnsPushableStack : RangeAnsStack {
     const uint32_t size = encoder[2 * value + 1];
     const uint16_t* lookup = &encoder[2 * value] + encoder[2 * value];
 
-    // If the state is going to overflow, write the lower 16 bits to the sink.
-    if (size <= (state >> (kLogMaxState - precision))) {
-      const char* limit = sink->data() + sink->size();
-      DCHECK(sink->data() <= end && end <= current && current <= limit);
-      if (limit - current < 2) {
-        constexpr int kAppendSize = 64;
-        static_assert(2 <= kAppendSize);
-
-        const ptrdiff_t current_diff = current - sink->data();
-        const ptrdiff_t end_diff = end - sink->data();
-        // sink->resize(current_diff + kAppendSize);
-        sink->append(kAppendSize, 0);
-        current = sink->data() + current_diff;
-        end = sink->data() + end_diff;
-      }
-      absl::little_endian::Store16(const_cast<char*>(current),
-                                   static_cast<uint16_t>(state));
-      current += 2;
-      state >>= 16;
-    }
+    Flush16BitsIfAboutToOverflow(size, precision);
 
     // Consider using multiplicative inverses instead of division.
     const uint32_t quotient = state / size;
     const uint32_t remainder = state - quotient * size;
     state = (quotient << precision) + lookup[remainder];
   }
+
+  // Encode a gamma code from the stack. See the pairing PopGammaCode16/32() for
+  // more details.
+  //
+  // REQUIRES: value > 0
+  void PushGammaCode16(uint16_t value);
+  void PushGammaCode32(uint32_t value);
 
   // The users must call Serialize() after encoding all characters. After
   // encoding the last character, the stack may have internal state that is
@@ -241,6 +252,36 @@ struct RangeAnsPushableStack : RangeAnsStack {
     if (!status_or.ok()) return status_or.status();
     static_cast<RangeAnsStack&>(stack) = *std::move(status_or);
     return stack;
+  }
+
+  // Flushes the lower 16 bits of the stack state to the sink, if necessary.
+  //
+  // The assumption here is that a value of quantized probability
+  // `size / 2**precision` is about to be pushed into the stack. If that push
+  // operation is going to overflow the state, then flush the lower 16 bits.
+  //
+  // REQUIRES: precision > 0
+  // REQUIRES: size <= 2**precision
+  void Flush16BitsIfAboutToOverflow(uint32_t size, int precision) {
+    if (size <= (state >> (kLogMaxState - precision))) {
+      const char* limit = sink->data() + sink->size();
+      DCHECK(sink->data() <= end && end <= current && current <= limit);
+      if (limit - current < 2) {
+        constexpr int kAppendSize = 64;
+        static_assert(2 <= kAppendSize);
+
+        const ptrdiff_t current_diff = current - sink->data();
+        const ptrdiff_t end_diff = end - sink->data();
+        // sink->resize(current_diff + kAppendSize);
+        sink->append(kAppendSize, 0);
+        current = sink->data() + current_diff;
+        end = sink->data() + end_diff;
+      }
+      absl::little_endian::Store16(const_cast<char*>(current),
+                                   static_cast<uint16_t>(state));
+      current += 2;
+      state >>= 16;
+    }
   }
 
   std::string* sink;  // Not owned.

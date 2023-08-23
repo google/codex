@@ -5,6 +5,7 @@ cc_library(
     srcs = ["range_ans.cc"],
     hdrs = ["range_ans.h"],
     deps = [
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:endian",
         "@com_google_absl//absl/log:check",

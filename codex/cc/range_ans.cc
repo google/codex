@@ -14,6 +14,7 @@
 // =============================================================================
 #include "codex/cc/range_ans.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -22,11 +23,13 @@
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/base/optimization.h"
 #include "absl/log/check.h"
 #include "absl/numeric/bits.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 
 namespace codex {
@@ -214,6 +217,103 @@ int64_t RangeAnsStack::DecoderLookupSize(absl::Span<const int32_t> pmf) {
 int64_t RangeAnsStack::EncoderLookupSize(uint64_t decoder_header) {
   const auto header = absl::bit_cast<DecoderHeader>(decoder_header);
   return (1 << header.precision) + 2 * (1 << header.shift);
+}
+
+// Decodes or encodes a gamma code when value < 2**16.
+//
+// This bit stack reads and writes 16 bits at a time from the bitstream.
+// Therefore when the value being pushed and popped is at most 16 bits, the
+// operations may be carried out with at most one read or write.
+//
+// NOTE: Gamma code is used here as a fallback scheme. This feature should not
+// complicate the main stack design or implementation.
+//
+// Gamma coding splits a strictly positive number n into its MSB and the rest of
+// the bit pattern. For example, when n=42, its bit pattern 0b101010 is
+// represented as
+//
+//   0b101010 = 0b100000 + 0b01010
+//
+// and these two numbers are pushed into the bit stack. During decoding, the
+// decoder first pops 0b100000. From the number of trailing zeros, the decoder
+// knows 5 bits should be decoded the next, and pops 0b01010 from the stack.
+//
+uint32_t RangeAnsStack::PopGammaCode16() {
+  Read16BitsIfAvailable();
+  const int tzcnt = absl::countr_zero(state);
+  DCHECK_LT(tzcnt, 16);
+  state >>= (tzcnt + 1);
+
+  Read16BitsIfAvailable();
+  const uint32_t value = (1u << tzcnt) + GetLowBits(state, tzcnt);
+  state >>= tzcnt;
+  return value;
+}
+
+void RangeAnsPushableStack::PushGammaCode16(uint16_t value16) {
+  DCHECK_GT(value16, 0);
+  const uint32_t value = value16;
+  ABSL_ASSUME(value != 0);
+  const int n = absl::bit_width(value);
+  DCHECK_GT(n, 0);
+
+  if (n > 1) {
+    Flush16BitsIfAboutToOverflow(1, n - 1);
+    state = (state << (n - 1)) | GetLowBits(value, n - 1);
+  }
+
+  Flush16BitsIfAboutToOverflow(1, n);
+  state = (state << n) | (1u << (n - 1));
+}
+
+// Gamma coding for 32-bit values is more complicated. As usual, the input value
+// is split into its MSB and the rest of the bit pattern. Then their upper 16
+// bits are encoded first, then their lower 16 bits are encoded second.
+//
+// For example, suppose the input value were 0x42e7a1, which would split into
+// its MSB isolation 0x400000 and the rest 0x02e7a1. Four numbers are pushed
+// into the stack:
+//
+//   1. 0x02  (hi-word of 0x02e7a1, 5 bits)
+//   2. 0x40  (hi-word of 0x400000, 6 bits)
+//   3. 0xe7a1 (lo-word of 0x02e7a1, 16 bits)
+//   4. 0x0000 (lo-word of 0x400000, 16 bits)
+//
+// Note that fixed 16 bits are used to encode lo-words. During the decode, the
+// decoder observes 0x0000, 16 serial zeros. This tells the decoder that the
+// next value to be popped from the stack is 16-bit wide, and there is one more
+// 16-bit gamma code to be decoded after that.
+//
+uint32_t RangeAnsStack::PopGammaCode32() {
+  Read16BitsIfAvailable();
+  if (static_cast<uint16_t>(state) != 0) {
+    // NOTE: PopGammaCode16() has another Read16BitsIfAvailable() call at the
+    // beginning, which might cause a small overhead.
+    return PopGammaCode16();
+  }
+
+  state >>= 16;
+  Read16BitsIfAvailable();
+  const uint32_t lo = static_cast<uint16_t>(state);
+  state >>= 16;
+
+  return lo | (PopGammaCode16() << 16);
+}
+
+void RangeAnsPushableStack::PushGammaCode32(uint32_t value) {
+  DCHECK_GT(value, 0);
+  if ((value >> 16) == 0) {
+    PushGammaCode16(value);
+    return;
+  }
+
+  PushGammaCode16(value >> 16);
+
+  Flush16BitsIfAboutToOverflow(1, 16);
+  state = (state << 16) | static_cast<uint16_t>(value);
+
+  Flush16BitsIfAboutToOverflow(1, 16);
+  state <<= 16;  // Push 16 unset bits.
 }
 
 }  // namespace codex
