@@ -317,7 +317,7 @@ class RangeAnsStack:
     table contains multiple distributions and `index` is the distribution index.
 
     Args:
-      decoder: A lookup table. Created by py_coding.make_decoder().
+      decoder: A lookup table. Created by RangeAnsStack.make_decoder().
       index: A non-negative int32 scalar. The distribution index of the value to
         be decoded.
 
@@ -387,7 +387,7 @@ class RangeAnsStack:
     table contains multiple distributions and `index` is the distribution index.
 
     Args:
-      encoder: A lookup table. Created by py_coding.make_encoder().
+      encoder: A lookup table. Created by RangeAnsStack.make_encoder().
       index: A non-negative int32 scalar. The distribution index of the value to
         be decoded.
       value: A non-negative int32 scalar. The maximum allowed value may be
