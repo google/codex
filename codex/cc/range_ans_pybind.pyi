@@ -52,6 +52,17 @@ class RangeAnsStack:
            index: np.ndarray,
            value: np.ndarray) -> None: ...
 
+  # A variant pop/push pair that supports out-of-range values with fallback
+  # encoding scheme.
+  def pop_with_fallback(self,
+                        decoder: np.ndarray,
+                        index: np.ndarray) -> np.ndarray: ...
+
+  def push_with_fallback(self,
+                         encoder: np.ndarray,
+                         index: np.ndarray,
+                         value: np.ndarray) -> None: ...
+
   def serialize(self) -> bytes: ...
 
   @staticmethod

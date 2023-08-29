@@ -535,9 +535,9 @@ def _range_ans_stack_make_encoder(decoder: np.ndarray) -> np.ndarray:
   chex.assert_type(decoder, np.uint64)
   chex.assert_rank(decoder, 1)
 
-  header = decoder[1:decoder[0]:2]
-  precision = np.int32((header >> 16) & 0xFFFF)
-  shift = np.int32((header >> 48) & 0xFFFF)
+  decoder_header = decoder[:np.uint32(decoder[0])]
+  precision = np.int32((decoder_header[1::2] >> 16) & 0xFFFF)
+  shift = np.int32((decoder_header[1::2] >> 48) & 0xFFFF)
   assert np.all(shift <= precision)
   assert np.all(precision < 16)
 
@@ -545,14 +545,14 @@ def _range_ans_stack_make_encoder(decoder: np.ndarray) -> np.ndarray:
   if np.iinfo(np.int32).max < np.sum(2 + size):
     raise ValueError("Encoder lookup size is too large")
 
-  buffer = np.zeros(np.sum(2 + size), dtype=np.int32)
-  header = buffer[:decoder[0]].view()
+  buffer = np.zeros(np.sum(2 + size), dtype=np.uint32)
+  header = buffer[:decoder_header.size].view()
 
   offset = np.cumsum(size) - size  # Exclusive scan.
   header[0::2] = offset + header.size - np.arange(0, header.size, 2)
   header[1::2] = precision
 
-  doffset = int(decoder[0])
+  doffset = int(decoder_header.size)
   offset = header.size
   for precision, shift in zip(precision, shift):
     assert shift <= precision < 16
