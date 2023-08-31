@@ -37,13 +37,14 @@ namespace codex {
 absl::StatusOr<std::tuple<uint64_t, std::unique_ptr<const uint64_t[]>>>
 RangeAnsStack::MakeDecoder(absl::Span<const int32_t> pmf) {
   const int32_t sum = std::accumulate(pmf.begin(), pmf.end(), 0);
-  if (sum <= 0 || (1 << kMaxPrecision) < sum ||
+  if (sum <= 1 || (1 << kMaxPrecision) < sum ||
       !absl::has_single_bit(static_cast<uint32_t>(sum))) {
     return absl::InvalidArgumentError(absl::StrCat(
-        "The sum of PMF should be a power of 2 (<= 32768): ", sum));
+        "The sum of PMF should be a power of two (1 < sum <= 32768): ", sum));
   }
   ABSL_ASSUME(sum != 0);
   const int precision = absl::bit_width(static_cast<uint32_t>(sum)) - 1;
+  CHECK_GT(precision, 0);
 
   const int shift =
       absl::bit_width(pmf.size()) - (absl::has_single_bit(pmf.size()) ? 1 : 0);

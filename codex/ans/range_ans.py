@@ -453,18 +453,21 @@ def _range_ans_stack_make_decoder(qmfs: Sequence[np.ndarray]) -> np.ndarray:
   chex.assert_type(qmfs, int)
   chex.assert_rank(qmfs, 1)
 
+  if not qmfs:
+    raise ValueError("No quantized pmf in the list.")
+
   n = len(qmfs)
   qmfs = jax.tree_map(np.asarray, qmfs)
 
   if any(np.any(qmf < 0) for qmf in qmfs):
-    raise ValueError("Quantized pmf contains a negative number")
+    raise ValueError("Quantized pmf contains a negative number.")
 
   qsum = np.asarray([qmf.sum() for qmf in qmfs])
   precision = np.asarray([int(x).bit_length() - 1 for x in qsum])
+  if not np.all((0 < precision) & (precision < 16)):
+    raise ValueError(f"Quantized pmf sum is not in range (1, 32768]: {qsum}")
   if not np.all(qsum == (1 << precision)):
     raise ValueError(f"Quantized pmf sum must be a power of 2: {qsum}")
-  if not np.all(precision < 16):
-    raise ValueError(f"Quantized pmf sum is too large: {qsum}")
 
   qsize = np.asarray([qmf.size for qmf in qmfs])
   shift = np.asarray([int(qmf.size).bit_length() - 1 for qmf in qmfs])
