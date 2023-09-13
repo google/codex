@@ -52,14 +52,15 @@ def soft_round(x, temperature):
     r = jnp.tanh((x - m) / t) / z
     return m + r
 
-  identity_t = lambda z, t: z
-  round_t = lambda z, t: jnp.round(z)
-
-  return jax.lax.cond(
+  return jnp.where(
       temperature < 1e-4,
-      round_t,
-      lambda z, t: jax.lax.cond(t > 1e4, identity_t, _soft_round, z, t),
-      x, temperature)
+      jnp.round(x),
+      jnp.where(
+          temperature > 1e4,
+          x,
+          _soft_round(x, jnp.clip(temperature, 1e-4, 1e4)),
+      ),
+  )
 
 
 def soft_round_inverse(x, temperature):
@@ -91,14 +92,15 @@ def soft_round_inverse(x, temperature):
     r = jnp.arctanh((x - m) * z) * t
     return m + r
 
-  identity_t = lambda z, t: z
-  round_inverse_t = lambda z, t: jnp.ceil(z) - .5
-
-  return jax.lax.cond(
+  return jnp.where(
       temperature < 1e-4,
-      round_inverse_t,
-      lambda z, t: jax.lax.cond(t > 1e4, identity_t, _sr_inverse, z, t),
-      x, temperature)
+      jnp.ceil(x) - .5,
+      jnp.where(
+          temperature > 1e4,
+          x,
+          _sr_inverse(x, jnp.clip(temperature, 1e-4, 1e4)),
+      ),
+  )
 
 
 def soft_round_conditional_mean(x, temperature):
