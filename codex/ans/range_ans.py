@@ -132,7 +132,7 @@ class RangeAnsStack:
   def decode_scalar(
       self,
       cdf: chex.Array,
-      precision: chex.Array) -> tuple[RangeAnsStack, chex.Array]:
+      precision: chex.Array) -> tuple[RangeAnsStack, jax.Array]:
     """Decodes one symbol from rANS stack.
 
     The coding alphabet is assumed to be `{0, 1, ..., n - 1}`, and `n` is the
@@ -179,7 +179,7 @@ class RangeAnsStack:
 
   def encode_scalar(self,
                     bound: tuple[chex.Array, chex.Array],
-                    precision: chex.Array) -> RangeAnsStack:
+                    precision: chex.Array | int) -> RangeAnsStack:
     """Encodes one symbol to rANS stack.
 
     The argument section refers to `cdf`. See `decode_scalar()` documentation
@@ -218,7 +218,7 @@ class RangeAnsStack:
   def decode(self,
              index: chex.Array,
              cdf: chex.Array,
-             precision: chex.Array) -> tuple[RangeAnsStack, chex.Array]:
+             precision: chex.Array | int) -> tuple[RangeAnsStack, jax.Array]:
     """Decodes many values in a Jax loop.
 
     Args:
@@ -252,7 +252,7 @@ class RangeAnsStack:
   def encode(self,
              value: Union[tuple[chex.Array, chex.Array],
                           tuple[chex.Array, chex.Array, chex.Array]],
-             precision: chex.Array) -> RangeAnsStack:
+             precision: chex.Array | int) -> RangeAnsStack:
     """Encodes many values in a Jax loop.
 
     Note that ANS is a LIFO system, and it encodes and decodes in reverse order.
@@ -310,7 +310,7 @@ class RangeAnsStack:
   def pop_scalar(
       self,
       decoder: chex.Array,
-      index: chex.Array) -> tuple[RangeAnsStack, chex.Array]:
+      index: chex.Array | int) -> tuple[RangeAnsStack, jax.Array]:
     """Pops one value from rANS stack.
 
     Decodes a value from the stack with decoder lookup table. The decoder lookup
@@ -363,7 +363,7 @@ class RangeAnsStack:
 
   def pop(self,
           decoder: chex.Array,
-          index: chex.Array) -> tuple[RangeAnsStack, chex.Array]:
+          index: chex.Array) -> tuple[RangeAnsStack, jax.Array]:
     """Pops many values in a Jax loop.
 
     Args:
@@ -379,8 +379,8 @@ class RangeAnsStack:
 
   def push_scalar(self,
                   encoder: chex.Array,
-                  index: chex.Array,
-                  value: chex.Array) -> RangeAnsStack:
+                  index: chex.Array | int,
+                  value: chex.Array | int) -> RangeAnsStack:
     """Pushes one value into rANS stack.
 
     Encodes a value into the stack with encoder lookup table. The encoder lookup
