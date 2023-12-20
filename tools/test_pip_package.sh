@@ -5,9 +5,12 @@ set -ex  # Fail if any command fails, echo commands.
 PYTHON_BIN="${1}"
 WHEEL_PATH="${2}"
 
-# Creates clean virtual environment for test.
-"${PYTHON_BIN}" -m venv "${TEMP}/codex-test-venv"
-source "${TEMP}/codex-test-venv/bin/activate"
+VENV="$(mktemp -d)" || exit 1
+trap 'rm -rf -- "${VENV}"' EXIT
+
+# Creates a clean virtual environment for test.
+"${PYTHON_BIN}" -m venv "${VENV}"
+source "${VENV}/bin/activate"
 python --version
 
 # Installs built pip package.
@@ -19,9 +22,8 @@ python -m pip show -f jax-codex
 python -m pip install -U pytest chex tensorflow-probability
 python -m pip list -v
 
-pushd "${TEMP}"
+pushd "${VENV}"
 pytest --pyargs codex
 popd
 
 deactivate
-

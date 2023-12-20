@@ -38,4 +38,8 @@ build-backend = "flit_core.buildapi"
 name = "codex"
 
 [tool.flit.sdist]
-exclude = ["**/*.bazel"]
+exclude = [
+    "**/*.bazel",
+    "**/*.cc",
+    "**/*.h",
+]
