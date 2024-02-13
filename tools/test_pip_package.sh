@@ -23,7 +23,9 @@ python -m pip install -U pytest chex tensorflow-probability
 python -m pip list -v
 
 pushd "${VENV}"
-pytest --pyargs codex
+# `pytest --pyargs codex`` should work, but seems to cause recursion into
+# /var/agentx/... on Darwin, which leads to a permission failure.
+pytest lib/python*/site-packages/codex
 popd
 
 deactivate
