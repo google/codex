@@ -16,7 +16,7 @@
 
 from typing import ClassVar, Optional, Tuple
 import chex
-import flax.linen as nn
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 
@@ -34,7 +34,7 @@ def logsum_expbig_minus_expsmall(big, small):
   return jnp.where(jnp.isinf(big), big, jnp.log1p(-jnp.exp(small - big)) + big)
 
 
-class ContinuousEntropyModel(nn.Module):
+class ContinuousEntropyModel(eqx.Module):
   """Entropy model for continuous random variables.
 
   Attributes:
@@ -47,7 +47,7 @@ class ContinuousEntropyModel(nn.Module):
     dtype = jax.dtypes.result_type(
         self.min_dtype,
         *(a for a in jax.tree_util.tree_leaves(pytree) if a is not None))
-    return jax.tree_map(
+    return jax.tree.map(
         lambda a: None if a is None else jnp.asarray(a, dtype=dtype), pytree)
 
   def bin_prob(self,

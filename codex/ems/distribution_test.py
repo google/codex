@@ -17,9 +17,9 @@
 from typing import Any
 import chex
 from codex.ems import distribution
+import distrax
 import jax
 import jax.numpy as jnp
-from tensorflow_probability.substrates import jax as tfp
 
 
 # TODO(jonycgn): Improve unit tests.
@@ -33,7 +33,7 @@ class TestNormalDistribution:
 
     @property
     def distribution(self):
-      return tfp.distributions.Normal(loc=self.loc, scale=self.scale)
+      return distrax.Normal(loc=self.loc, scale=self.scale)
 
   def test_can_instantiate_and_evaluate_scalar(self):
     x = jax.random.normal(jax.random.PRNGKey(0), (3, 4, 5))
@@ -82,9 +82,9 @@ class TestNormalDistribution:
 
     em = self.EntropyModel(loc=0., scale=distribution.scale_param(p, 25))
 
-    bits = em.apply({}, x[:, None], method="bin_bits")
+    bits = em.bin_bits(x[:, None])
     assert jnp.isfinite(bits).all(), bits
-    prob = em.apply({}, x[:, None], method="bin_prob")
+    prob = em.bin_bits(x[:, None])
     assert jnp.isfinite(prob).all(), prob
 
   def test_scale_param_yields_finite_gradient(self):
@@ -93,7 +93,7 @@ class TestNormalDistribution:
 
     def bits(x, p):
       em = self.EntropyModel(loc=0., scale=distribution.scale_param(p, 25))
-      return em.apply({}, x, method="bin_bits")
+      return em.bin_bits(x)
 
     grad_x = jax.grad(bits, argnums=0)
     dbdx = jax.vmap(jax.vmap(grad_x, (None, 0), 0), (0, None), 1)(x, p)
@@ -114,7 +114,7 @@ class TestZeroMeanDistribution(TestNormalDistribution):
 
     @property
     def distribution(self):
-      return tfp.distributions.Normal(loc=0., scale=self.scale)
+      return distrax.Normal(loc=0., scale=self.scale)
 
 
 class TestLogisticDistribution(TestNormalDistribution):
@@ -125,7 +125,7 @@ class TestLogisticDistribution(TestNormalDistribution):
 
     @property
     def distribution(self):
-      return tfp.distributions.Logistic(loc=self.loc, scale=self.scale)
+      return distrax.Logistic(loc=self.loc, scale=self.scale)
 
 
 class TestLaplaceDistribution(TestNormalDistribution):
@@ -136,4 +136,4 @@ class TestLaplaceDistribution(TestNormalDistribution):
 
     @property
     def distribution(self):
-      return tfp.distributions.Laplace(loc=self.loc, scale=self.scale)
+      return distrax.Laplace(loc=self.loc, scale=self.scale)

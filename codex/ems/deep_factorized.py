@@ -14,19 +14,19 @@
 # ==============================================================================
 """Deep fully factorized entropy model based on cumulative density."""
 
-import math
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 from codex.ems import continuous
 from codex.ops import quantization
-import flax.linen as nn
+import equinox as eqx
 import jax
+from jax import nn
 import jax.numpy as jnp
 
 Array = jax.Array
 ArrayLike = jax.typing.ArrayLike
 
 
-def matrix_init(key, shape, scale):
+def matrix_init(shape, scale):
   """Initializes matrix with constant value according to init_scale.
 
   This initialization function was designed to avoid the early training
@@ -54,46 +54,58 @@ def matrix_init(key, shape, scale):
   of `x`.
 
   Args:
-    key: The Jax PRNG key for this matrix initialization.
     shape: Sequence of integers. The shape of the matrix.
     scale: Scale factor for initial value.
 
   Returns:
     The initial matrix value.
   """
-  del key  # Unused.
   return jnp.full(shape, jnp.log(jnp.expm1(1 / scale / shape[-1])))
 
 
-def bias_init(key, shape):
-  return jax.random.uniform(key, shape, minval=-.5, maxval=.5)
-
-
-def factor_init(key, shape):
-  return jax.nn.initializers.zeros(key, shape)
-
-
-class ParallelMonotonicMLP(nn.Module):
+class MonotonicMLP(eqx.Module):
   """MLP that implements monotonically increasing functions by construction."""
-  features: Tuple[int, ...]
-  init_scale: float
-  num_parallel_dims: int = 1
+  matrices: List[Array]
+  biases: List[Array]
+  factors: List[Array]
 
-  @nn.compact
-  def __call__(self, x):
-    scale = self.init_scale ** (1 / (1 + len(self.features)))
-    num_mlps = math.prod(x.shape[len(x.shape)-self.num_parallel_dims:])
-    u = x.reshape((-1, num_mlps, 1))
-    features = (1,) + self.features + (1,)
+  def __init__(self, rng, features: Tuple[int, ...], init_scale: float):
+    """Initializes the MLP.
+
+    Args:
+      rng: Random number generator key for initialization.
+      features: Iterable of integers. The number of filters for each of the
+        hidden layers. The first and last layer of the network implementing the
+        cumulative distribution are not included (they are assumed to be 1).
+      init_scale: Float. Scale factor for the density at initialization. It is
+        recommended to choose a large enough scale factor such that most values
+        initially lie within a region of high likelihood. This improves
+        training.
+    """
+    super().__init__()
+    scale = init_scale ** (1 / (1 + len(features)))
+    features = (1,) + features + (1,)
+    self.matrices = []
+    self.biases = []
+    self.factors = []
     for k, shape in enumerate(zip(features[1:], features[:-1])):
-      shape = (num_mlps,) + shape
-      matrix = self.param(f"matrix_{k}", matrix_init, shape, scale)
-      bias = self.param(f"bias_{k}", bias_init, shape[:2])
-      u = jnp.einsum("ijk,lik->lij", jax.nn.softplus(matrix), u) + bias
-      if k < len(self.features):
-        factor = self.param(f"factor_{k}", factor_init, shape[:2])
-        u += jnp.tanh(u) * jnp.tanh(factor)
-    return u.reshape(x.shape)
+      # shape == (out_dims, in_dims)
+      self.matrices.append(matrix_init(shape, scale))
+      self.biases.append(jax.random.uniform(
+          rng, shape[:1], minval=-.5, maxval=.5))
+      if k < len(features) - 2:
+        self.factors.append(jnp.zeros(shape[:1]))
+
+  def __call__(self, x):
+    x = x[..., None]
+    assert len(self.matrices) == len(self.biases) == len(self.factors) + 1
+    for k in range(len(self.factors)):
+      x = jnp.einsum("...ij,...j->...i", jax.nn.softplus(self.matrices[k]), x)
+      x += self.biases[k]
+      x += jnp.tanh(x) * jnp.tanh(self.factors[k])
+    x = jnp.einsum("...ij,...j->...i", jax.nn.softplus(self.matrices[-1]), x)
+    x += self.biases[-1]
+    return jnp.squeeze(x, axis=-1)
 
 
 class DeepFactorizedEntropyModel(continuous.ContinuousEntropyModel):
@@ -116,38 +128,55 @@ class DeepFactorizedEntropyModel(continuous.ContinuousEntropyModel):
      CDF(x) = \prod_{i=1}^64 CDF_i(x_i)
 
   where each function CDF_i is modeled by MLPs of different parameters.
-
-  Attributes:
-    features: Iterable of integers. The number of filters for each of the
-      hidden layers. The first and last layer of the network implementing the
-      cumulative distribution are not included (they are assumed to be 1).
-    init_scale: Float. Scale factor for the density at initialization. It is
-      recommended to choose a large enough scale factor such that most values
-      initially lie within a region of high likelihood. This improves
-      training.
-    num_non_iid_dims: Integer. The number of dimensions on the right of the
-      input which are treated as independent, but non-identically distributed.
-      The remaining dimensions on the left are treated as i.i.d. (like batch
-      dimensions).
   """
-  features: Tuple[int, ...] = (3, 3, 3)
-  init_scale: float = 10.
-  num_non_iid_dims: int = 1
+  num_pdfs: int
+  cdf_logits: eqx.Module
 
-  def setup(self):
-    super().setup()
-    self.cdf_logits = ParallelMonotonicMLP(
-        self.features, self.init_scale, self.num_non_iid_dims)
+  def __init__(self,
+               rng,
+               num_pdfs: int,
+               features: Tuple[int, ...] = (3, 3, 3),
+               init_scale: float = 10.):
+    """Initializes the model.
+
+    Args:
+      rng: Random number generator key for initialization.
+      num_pdfs: Integer. The number of distinct scalar PDFs on the right of the
+        input array. These are treated as independent, but non-identically
+        distributed. The remaining array elements on the left are treated as
+        i.i.d. (like in a batch dimension).
+      features: Iterable of integers. The number of filters for each of the
+        hidden layers. The first and last layer of the network implementing the
+        cumulative distribution are not included (they are assumed to be 1).
+      init_scale: Float. Scale factor for the density at initialization. It is
+        recommended to choose a large enough scale factor such that most values
+        initially lie within a region of high likelihood. This improves
+        training.
+    """
+    super().__init__()
+    self.num_pdfs = num_pdfs
+    self.cdf_logits = eqx.filter_vmap(
+        lambda r: MonotonicMLP(r, features, init_scale),
+        axis_size=num_pdfs)(jax.random.split(rng, num=num_pdfs))
+
+  def _upper_lower_logits(
+      self,
+      center: ArrayLike,
+      temperature: Optional[ArrayLike] = None,
+  ) -> Tuple[Array, ...]:
+    upper = quantization.soft_round_inverse(center + .5, temperature)
+    lower = upper - 1.
+    cdf_logits = eqx.filter_vmap(self.cdf_logits)
+    logits_upper = cdf_logits(jnp.reshape(upper, (-1, self.num_pdfs)))
+    logits_lower = cdf_logits(jnp.reshape(lower, (-1, self.num_pdfs)))
+    logits_upper = jnp.reshape(logits_upper, upper.shape)
+    logits_lower = jnp.reshape(logits_lower, upper.shape)
+    return self._maybe_upcast((logits_upper, logits_lower))
 
   def bin_bits(self,
                center: ArrayLike,
                temperature: Optional[ArrayLike] = None) -> Array:
-    upper = quantization.soft_round_inverse(center + .5, temperature)
-    lower = upper - 1.
-    logits_upper = self.cdf_logits(upper)
-    logits_lower = self.cdf_logits(lower)
-    logits_upper, logits_lower = self._maybe_upcast(
-        (logits_upper, logits_lower))
+    logits_upper, logits_lower = self._upper_lower_logits(center, temperature)
     # sigmoid(u) - sigmoid(l) = sigmoid(-l) - sigmoid(-u)
     condition = logits_upper <= -logits_lower
     big = nn.log_sigmoid(jnp.where(condition, logits_upper, -logits_lower))
@@ -157,12 +186,7 @@ class DeepFactorizedEntropyModel(continuous.ContinuousEntropyModel):
   def bin_prob(self,
                center: ArrayLike,
                temperature: Optional[ArrayLike] = None) -> Array:
-    upper = quantization.soft_round_inverse(center + .5, temperature)
-    lower = upper - 1.
-    logits_upper = self.cdf_logits(upper)
-    logits_lower = self.cdf_logits(lower)
-    logits_upper, logits_lower = self._maybe_upcast(
-        (logits_upper, logits_lower))
+    logits_upper, logits_lower = self._upper_lower_logits(center, temperature)
     # sigmoid(u) - sigmoid(l) = sigmoid(-l) - sigmoid(-u)
     sgn = -jnp.sign(logits_upper + logits_lower)
     return abs(nn.sigmoid(sgn * logits_upper) - nn.sigmoid(sgn * logits_lower))

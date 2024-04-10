@@ -21,15 +21,17 @@ import jax.numpy as jnp
 
 
 def test_fourier_entropy_model_output_shape():
-  em = fourier_entropy_model.FourierSeriesEntropyModel(num_freqs=10)
+  em = fourier_entropy_model.FourierSeriesEntropyModel(
+      jax.random.PRNGKey(0), num_pdfs=3, num_freqs=10)
   num_dims, length = 3, 20
   x = jax.random.normal(jax.random.PRNGKey(0), (length, num_dims))
-  prob, _ = em.init_with_output(jax.random.PRNGKey(0), x, method=em.bin_prob)
+  prob = em.bin_prob(x)
   chex.assert_shape(prob, (length, num_dims))
 
 
 def test_fourier_entropy_model_bin_prob_sum_values():
-  em = fourier_entropy_model.FourierSeriesEntropyModel(num_freqs=10)
+  em = fourier_entropy_model.FourierSeriesEntropyModel(
+      jax.random.PRNGKey(0), num_pdfs=2, num_freqs=10)
   x = jnp.linspace(-10, 10, 21)
   x = jnp.moveaxis(
       jnp.stack(
@@ -39,17 +41,16 @@ def test_fourier_entropy_model_bin_prob_sum_values():
       -1,
       0,
   )
-  bin_prob_values, _ = em.init_with_output(
-      jax.random.PRNGKey(0), x, method=em.bin_prob
-  )
+  bin_prob_values = em.bin_prob(x)
   integral = jnp.round(bin_prob_values.sum(axis=0), 3)
   chex.assert_trees_all_equal(integral, jnp.array([1.0, 1.0]))
 
 
 def test_fourier_bin_prob_and_bin_prob_are_consistent():
-  em = fourier_entropy_model.FourierSeriesEntropyModel(num_freqs=15)
+  em = fourier_entropy_model.FourierSeriesEntropyModel(
+      jax.random.PRNGKey(0), num_pdfs=3, num_freqs=15)
   num_dims, length = 3, 20
   x = jax.random.normal(jax.random.PRNGKey(0), (length, num_dims))
-  prob, v = em.init_with_output(jax.random.PRNGKey(0), x, method=em.bin_prob)
-  bits_values = em.apply(v, x, method=em.bin_bits)
-  chex.assert_trees_all_close(-jnp.log(prob), bits_values, atol=1e-7)
+  prob = em.bin_prob(x)
+  bits_values = em.bin_bits(x)
+  chex.assert_trees_all_close(prob, 2 ** -bits_values, atol=1e-7)

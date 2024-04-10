@@ -19,7 +19,7 @@ python -m pip install -U "${WHEEL_PATH}"
 python -m pip show -f jax-codex
 
 # Runs unit tests.
-python -m pip install -U pytest chex tensorflow-probability
+python -m pip install -U pytest chex distrax
 python -m pip list -v
 
 pushd "${VENV}"
