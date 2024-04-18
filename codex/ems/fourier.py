@@ -12,13 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Helper functions for Fourier basis models."""
+"""Fourier basis entropy models."""
 
+from typing import Optional
+from codex.ems import continuous
+from codex.ops import quantization
+import equinox as eqx
 import jax
+from jax import nn
 import jax.numpy as jnp
 
+Array = jax.Array
+ArrayLike = jax.typing.ArrayLike
 
-def autocorrelate(sequence, precision=None):
+
+def autocorrelate(sequence: Array, precision=None) -> Array:
   """Computes batched complex-valued autocorrelation.
 
   Args:
@@ -43,77 +51,167 @@ def autocorrelate(sequence, precision=None):
   )[0]
 
 
-def build_periodic_pdf(complex_coef, center, period, precision=1e-20):
-  """Computes PDF for periodic distributions for each value in array center.
+def periodic_prob(coef: Array, x: Array, y: Optional[Array] = None) -> Array:
+  """Evaluates PDF or difference of CDFs of a periodic Fourier basis density.
+
+  This function assumes the model is periodic with period 2.
 
   Args:
-    complex_coef: Complex typed array of shape `(num_dims, num_freq)`, where
-      `num_dims` is the number of independent sequences to correlate with
-      themselves, and `num_freq` is the number of frequency terms in the Fourier
-      reconstruction.
-    center: Array of shape `(length, num_dims)`, where `length` is the number of
-      points where we want to evaluate the PDF, and `num_dims` is the number of
-      independent dimensions.
-    period: float. Applicable for periodic circular distributions.
-    precision: float. Minimum value for clipping the distribution.
+    coef: Array. Coefficients of Fourier series.
+    x: Array. Locations to evaluate the PDF, or lower location of CDF if `y` is
+      provided.
+    y: Array. If provided, upper location of CDF.
 
   Returns:
-    Array of shape `(length, num_dims)` which contains the values of PDF.
+    If `y` is not provided: `p(x)`, where `p` is the PDF.
+    If `y` is provided: `P(y) - P(x)`, where `P` is the CDF.
   """
-  # Coefficients are first autocorrelated to ensure a non-negative density.
-  coef = autocorrelate(complex_coef)
+  num_freqs = coef.shape[-1]
 
-  # Fitting density on a finite interval - evaluate density
-  _, num_freq = coef.shape
+  # First, autocorrelate coefficients to ensure a non-negative density.
+  coef = autocorrelate(coef)
+
   # The DC coefficient is special: it is the normalizer of the density.
   dc = coef[:, 0].real
   ac = coef[:, 1:]
-  freq = (2j * jnp.pi) * jnp.arange(1, num_freq) / period
-  center = center[..., None]
-  # We can take the real part here because the sequence is assumed to have
-  # Hermitian symmetry, so the Fourier series is always real.
-  density = 0.5 + (ac * jnp.exp(freq * center)).real.sum(axis=-1) / dc
-  density /= period / 2.0
-  return jnp.clip(density, precision, None)
+  pi_n = jnp.pi * jnp.arange(1, num_freqs)
+
+  # Note: we can take the real part below because the coefficient sequence is
+  # assumed to have Hermitian symmetry, so the Fourier series is always real.
+  if y is None:
+    pi_n_x = pi_n * x[..., None]
+    return ((ac.real * jnp.cos(pi_n_x)).sum(axis=-1) -
+            (ac.imag * jnp.sin(pi_n_x)).sum(axis=-1)) / dc + .5
+  else:
+    pi_n_x = pi_n * x[..., None]
+    pi_n_y = pi_n * y[..., None]
+    cos_diff = jnp.cos(pi_n_y) - jnp.cos(pi_n_x)
+    sin_diff = jnp.sin(pi_n_y) - jnp.sin(pi_n_x)
+    return (((ac.real / pi_n) * sin_diff).sum(axis=-1) +
+            ((ac.imag / pi_n) * cos_diff).sum(axis=-1)) / dc + (y - x) / 2
 
 
-def build_pdf(complex_coef, center, scale, offset, precision=1e-20):
-  """Computes PDF for general distributions for each value in array center.
+class PeriodicFourierBasisEntropyModel(eqx.Module):
+  """Fourier basis entropy model for periodic distributions."""
+  period: float
+  real: Array
+  imag: Array
 
-  Args:
-    complex_coef: Complex typed array of shape `(num_dims, num_freq)`, where
-      `num_dims` is the number of independent sequences to correlate with
-      themselves, and `num_freq` is the number of terms in the Fourier
-      reconstruction.
-    center: Array of shape `(length, num_dims)`, where `length` is the number of
-      points where we want to evaluate the PDF, and `num_dims` is the number of
-      independent dimensions.
-    scale: Array of shape `(1, num_dims)`, where  `num_dims` is the number of
-      independent dimensions.
-    offset: Array of shape `(1, num_dims)`, where `num_dims` is the number of
-      independent dimensions.
-    precision: float. Minimum value for clipping the distribution.
+  def __init__(self,
+               rng,
+               period: float,
+               num_pdfs: int,
+               num_freqs: int = 10,
+               init_scale: float = 1e-3):
+    """Initializes the entropy model.
 
-  Returns:
-    Array of shape `(length, num_dims)` which contains the values of PDF.
-  """
-  # Coefficients are first autocorrelated to ensure a non-negative density.
-  coef = autocorrelate(complex_coef)
+    Args:
+      rng: Random number generator key for initialization.
+      period: Float. Length of interval on `x` over which entropy model is
+        periodic.
+      num_pdfs: Integer. The number of distinct scalar PDFs on the right of the
+        input array. These are treated as independent, but non-identically
+        distributed. The remaining array elements on the left are treated as
+        i.i.d. (like in a batch dimension).
+      num_freqs: Integer. Number of frequency components of the Fourier series.
+      init_scale: Float. Scale of normal distribution for random initialization
+        of coefficients.
+    """
+    super().__init__()
+    self.period = period
+    self.real, self.imag = init_scale * jax.random.normal(
+        rng, (2, num_pdfs, num_freqs))
 
-  # Fitting density on a finite interval - evaluate density
-  _, num_freq = coef.shape
-  # The DC coefficient is special: it is the normalizer of the density.
-  dc = coef[:, 0].real
-  ac = coef[:, 1:]
-  freq = (1j * jnp.pi) * jnp.arange(1, num_freq)
+  def prob(self, x: ArrayLike) -> Array:
+    # Get and transform model parameters.
+    coef = jax.lax.complex(self.real, self.imag)
 
-  # Apply change of variables
-  center = (center - offset) / scale
-  tanh_x = jnp.tanh(center)
-  center = center[..., None]
-  factor = (1.0 - jnp.square(tanh_x)) / scale
-  # We can take the real part here because the sequence is assumed to have
-  # Hermitian symmetry, so the Fourier series is always real.
-  density = 0.5 + (ac * jnp.exp(freq * jnp.tanh(center))).real.sum(axis=-1) / dc
-  density *= factor
-  return jnp.clip(density, precision, None)
+    # Change of variables. Here, g^{-1} is simply a rescaling to the period.
+    dg_inv_dx = 2 / self.period
+    g_inv = dg_inv_dx * x
+
+    return periodic_prob(coef, g_inv) * dg_inv_dx
+
+  def neg_log_prob(self, x: ArrayLike, eps: float = 1e-20) -> Array:
+    p = self.prob(x)
+    p = jnp.maximum(p, eps)
+    return -jnp.log(p)
+
+  # TODO(jonycgn): Implement `bin_bits` and `bin_prob` methods.
+
+
+class RealMappedFourierBasisEntropyModel(continuous.ContinuousEntropyModel):
+  """Fourier basis entropy model mapped to the real line."""
+  real: Array
+  imag: Array
+  scale: Array
+  offset: Array
+
+  def __init__(self,
+               rng,
+               num_pdfs: int,
+               num_freqs: int = 10,
+               init_scale: float = 1e-3):
+    """Initializes the entropy model.
+
+    Args:
+      rng: Random number generator key for initialization.
+      num_pdfs: Integer. The number of distinct scalar PDFs on the right of the
+        input array. These are treated as independent, but non-identically
+        distributed. The remaining array elements on the left are treated as
+        i.i.d. (like in a batch dimension).
+      num_freqs: Integer. Number of frequency components of the Fourier series.
+      init_scale: Float. Scale of normal distribution for random initialization
+        of coefficients.
+    """
+    super().__init__()
+    self.real, self.imag = init_scale * jax.random.normal(
+        rng, (2, num_pdfs, num_freqs))
+    self.scale = jnp.ones((num_pdfs,))
+    self.offset = jnp.zeros((num_pdfs,))
+
+  def prob(self, x: ArrayLike) -> Array:
+    # Get and transform model parameters.
+    coef = jax.lax.complex(self.real, self.imag)
+    scale = nn.softplus(self.scale)
+    offset = self.offset
+
+    # Change of variables using scaled and shifted hyperbolic tangent.
+    g_inv = jnp.tanh((x - offset) / scale)
+    dg_inv_dx = (1 - jnp.square(g_inv)) / scale
+
+    return periodic_prob(coef, g_inv) * dg_inv_dx
+
+  def neg_log_prob(self, x: ArrayLike, eps: float = 1e-20) -> Array:
+    p = self.prob(x)
+    p = jnp.maximum(p, eps)
+    return -jnp.log(p)
+
+  def bin_prob(self,
+               center: ArrayLike,
+               temperature: Optional[ArrayLike] = None) -> Array:
+    center, temperature = self._maybe_upcast((center, temperature))
+
+    # Get and transform model parameters.
+    coef = jax.lax.complex(self.real, self.imag)
+    scale = nn.softplus(self.scale)
+    offset = self.offset
+
+    # Transformation for soft rounding.
+    upper = quantization.soft_round_inverse(center + .5, temperature)
+    # soft_round is periodic with period 1, so we don't need to call it again.
+    lower = upper - 1
+
+    # Change of variables using scaled and shifted hyperbolic tangent.
+    upper = jnp.tanh((upper - offset) / scale)
+    lower = jnp.tanh((lower - offset) / scale)
+
+    return periodic_prob(coef, lower, upper)
+
+  def bin_bits(self,
+               center: ArrayLike,
+               temperature: Optional[ArrayLike] = None,
+               eps: float = 1e-20) -> Array:
+    p = self.bin_prob(center, temperature)
+    p = jnp.maximum(p, eps)
+    return jnp.log(p) / -jnp.log(2.)
