@@ -72,17 +72,15 @@ def test_build_pdf_large_scale():
 
 
 def test_build_pdf_small_scale():
-  num_freq, num_dims, length = 4, 2, 5
+  num_freq, num_dims, length = 4, 2, 10
   em = fourier.RealMappedFourierBasisEntropyModel(
-      jax.random.PRNGKey(0), num_freqs=num_freq, num_pdfs=num_dims,
-      init_scale=1)
+      jax.random.PRNGKey(0), num_freqs=num_freq, num_pdfs=num_dims, init_scale=1
+  )
   # Replace scale parameters.
-  em = eqx.tree_at(lambda m: m.scale, em, em.scale * 1e-6)
+  em = eqx.tree_at(lambda m: m.scale, em, em.scale * 1e-9)
   x = jax.random.normal(jax.random.PRNGKey(0), (length, num_dims))
   pdf = em.prob(x)
-  del pdf
-  # TODO(jonycgn): Find out why this test fails.
-  # assert jnp.all(pdf <= 1e-20)
+  assert jnp.all(jnp.max(pdf, axis=0) >= 1.0)
 
 
 def test_build_pdf_integral_equal_one():
@@ -149,10 +147,38 @@ def test_fourier_entropy_model_output_shape():
   chex.assert_shape(prob, (length, num_dims))
 
 
+def test_fourier_periodic_entropy_model_output_shape():
+  em = fourier.PeriodicFourierBasisEntropyModel(
+      jax.random.PRNGKey(0), period=2.0 * jnp.pi, num_pdfs=3, num_freqs=10
+  )
+  num_dims, length = 3, 20
+  x = jax.random.normal(jax.random.PRNGKey(0), (length, num_dims))
+  prob = em.bin_prob(x)
+  chex.assert_shape(prob, (length, num_dims))
+
+
 def test_fourier_entropy_model_bin_prob_sum_values():
   em = fourier.RealMappedFourierBasisEntropyModel(
       jax.random.PRNGKey(0), num_pdfs=2, num_freqs=10)
   x = jnp.linspace(-10, 10, 21)
+  x = jnp.moveaxis(
+      jnp.stack(
+          (x, x),
+          axis=0,
+      ),
+      -1,
+      0,
+  )
+  bin_prob_values = em.bin_prob(x)
+  integral = jnp.round(bin_prob_values.sum(axis=0), 3)
+  chex.assert_trees_all_equal(integral, jnp.array([1.0, 1.0]))
+
+
+def test_periodic_fourier_entropy_model_bin_prob_sum_values():
+  em = fourier.PeriodicFourierBasisEntropyModel(
+      jax.random.PRNGKey(0), period=2.0, num_pdfs=2, num_freqs=15
+  )
+  x = jnp.array([-0.5, 0.5])
   x = jnp.moveaxis(
       jnp.stack(
           (x, x),
@@ -174,3 +200,19 @@ def test_fourier_bin_prob_and_bin_prob_are_consistent():
   prob = em.bin_prob(x)
   bits_values = em.bin_bits(x)
   chex.assert_trees_all_close(prob, 2 ** -bits_values, atol=1e-7)
+
+
+def test_periodic_fourier_bin_prob_accuracy():
+  num_freq, num_dims, length = 15, 1, 1000
+  x = jnp.linspace(-1.0, 0.0, length)
+  em = fourier.PeriodicFourierBasisEntropyModel(
+      jax.random.PRNGKey(0),
+      period=2.0,
+      num_freqs=num_freq,
+      num_pdfs=num_dims,
+      init_scale=1,
+  )
+  pdf = em.prob(x)
+  integral = jnp.round(jnp.trapezoid(pdf, dx=1.0/length, axis=0), 4)
+  bin_prob_integral = jnp.round(em.bin_prob(jnp.array([-0.5])), 4)[0]
+  chex.assert_trees_all_close(integral, bin_prob_integral, atol=0.05)

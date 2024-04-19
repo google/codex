@@ -17,7 +17,7 @@
 from typing import Optional
 from codex.ems import continuous
 from codex.ops import quantization
-import equinox as eqx
+
 import jax
 from jax import nn
 import jax.numpy as jnp
@@ -91,7 +91,7 @@ def periodic_prob(coef: Array, x: Array, y: Optional[Array] = None) -> Array:
             ((ac.imag / pi_n) * cos_diff).sum(axis=-1)) / dc + (y - x) / 2
 
 
-class PeriodicFourierBasisEntropyModel(eqx.Module):
+class PeriodicFourierBasisEntropyModel(continuous.ContinuousEntropyModel):
   """Fourier basis entropy model for periodic distributions."""
   period: float
   real: Array
@@ -137,7 +137,35 @@ class PeriodicFourierBasisEntropyModel(eqx.Module):
     p = jnp.maximum(p, eps)
     return -jnp.log(p)
 
-  # TODO(jonycgn): Implement `bin_bits` and `bin_prob` methods.
+  def bin_prob(
+      self, center: ArrayLike, temperature: Optional[ArrayLike] = None
+  ) -> Array:
+    center, temperature = self._maybe_upcast((center, temperature))
+
+    # Get and transform model parameters.
+    coef = jax.lax.complex(self.real, self.imag)
+
+    # Transformation for soft rounding.
+    upper = quantization.soft_round_inverse(center + 0.5, temperature)
+    # soft_round is periodic with period 1, so we don't need to call it again.
+    lower = upper - 1
+
+    # Change of variables. Here, g^{-1} is simply a rescaling to the period.
+    dg_inv_dx = 2.0 / self.period
+    lower *= dg_inv_dx
+    upper *= dg_inv_dx
+
+    return periodic_prob(coef, lower, upper)
+
+  def bin_bits(
+      self,
+      center: ArrayLike,
+      temperature: Optional[ArrayLike] = None,
+      eps: float = 1e-20,
+  ) -> Array:
+    p = self.bin_prob(center, temperature)
+    p = jnp.maximum(p, eps)
+    return jnp.log(p) / -jnp.log(2.0)
 
 
 class RealMappedFourierBasisEntropyModel(continuous.ContinuousEntropyModel):
