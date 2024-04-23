@@ -14,14 +14,13 @@
 # ==============================================================================
 """Base class for entropy models of continuous distributions."""
 
-from typing import ClassVar, Optional, Tuple
-import chex
-import equinox as eqx
+from typing import Any, ClassVar, Optional, Tuple
 import jax
 import jax.numpy as jnp
 
 Array = jax.Array
 ArrayLike = jax.typing.ArrayLike
+DType = Any  # TODO(jonycgn): Add DType annotation once it exists.
 
 # TODO(jonycgn): Think through shape contracts and broadcasting for all methods
 # of this interface.
@@ -34,14 +33,14 @@ def logsum_expbig_minus_expsmall(big, small):
   return jnp.where(jnp.isinf(big), big, jnp.log1p(-jnp.exp(small - big)) + big)
 
 
-class ContinuousEntropyModel(eqx.Module):
+class ContinuousEntropyModel:
   """Entropy model for continuous random variables.
 
   Attributes:
     min_dtype: Minimum data type for probability computations. Inputs will be
       type promoted against this to ensure numerical accuracy.
   """
-  min_dtype: ClassVar[chex.ArrayDType] = jnp.float32
+  min_dtype: ClassVar[DType] = jnp.float32
 
   def _maybe_upcast(self, pytree):
     dtype = jax.dtypes.result_type(

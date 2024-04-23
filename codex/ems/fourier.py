@@ -17,7 +17,6 @@
 from typing import Optional
 from codex.ems import continuous
 from codex.ops import quantization
-
 import jax
 from jax import nn
 import jax.numpy as jnp
@@ -66,7 +65,7 @@ def periodic_prob(coef: Array, x: Array, y: Optional[Array] = None) -> Array:
     If `y` is not provided: `p(x)`, where `p` is the PDF.
     If `y` is provided: `P(y) - P(x)`, where `P` is the CDF.
   """
-  num_freqs = coef.shape[-1]
+  _, num_freqs = coef.shape
 
   # First, autocorrelate coefficients to ensure a non-negative density.
   coef = autocorrelate(coef)
@@ -91,36 +90,9 @@ def periodic_prob(coef: Array, x: Array, y: Optional[Array] = None) -> Array:
             ((ac.imag / pi_n) * cos_diff).sum(axis=-1)) / dc + (y - x) / 2
 
 
-class PeriodicFourierBasisEntropyModel(continuous.ContinuousEntropyModel):
+# pytype:disable=attribute-error
+class PeriodicFourierEntropyModelBase(continuous.ContinuousEntropyModel):
   """Fourier basis entropy model for periodic distributions."""
-  period: float
-  real: Array
-  imag: Array
-
-  def __init__(self,
-               rng,
-               period: float,
-               num_pdfs: int,
-               num_freqs: int = 10,
-               init_scale: float = 1e-3):
-    """Initializes the entropy model.
-
-    Args:
-      rng: Random number generator key for initialization.
-      period: Float. Length of interval on `x` over which entropy model is
-        periodic.
-      num_pdfs: Integer. The number of distinct scalar PDFs on the right of the
-        input array. These are treated as independent, but non-identically
-        distributed. The remaining array elements on the left are treated as
-        i.i.d. (like in a batch dimension).
-      num_freqs: Integer. Number of frequency components of the Fourier series.
-      init_scale: Float. Scale of normal distribution for random initialization
-        of coefficients.
-    """
-    super().__init__()
-    self.period = period
-    self.real, self.imag = init_scale * jax.random.normal(
-        rng, (2, num_pdfs, num_freqs))
 
   def prob(self, x: ArrayLike) -> Array:
     # Get and transform model parameters.
@@ -137,9 +109,9 @@ class PeriodicFourierBasisEntropyModel(continuous.ContinuousEntropyModel):
     p = jnp.maximum(p, eps)
     return -jnp.log(p)
 
-  def bin_prob(
-      self, center: ArrayLike, temperature: Optional[ArrayLike] = None
-  ) -> Array:
+  def bin_prob(self,
+               center: ArrayLike,
+               temperature: Optional[ArrayLike] = None) -> Array:
     center, temperature = self._maybe_upcast((center, temperature))
 
     # Get and transform model parameters.
@@ -157,46 +129,17 @@ class PeriodicFourierBasisEntropyModel(continuous.ContinuousEntropyModel):
 
     return periodic_prob(coef, lower, upper)
 
-  def bin_bits(
-      self,
-      center: ArrayLike,
-      temperature: Optional[ArrayLike] = None,
-      eps: float = 1e-20,
-  ) -> Array:
+  def bin_bits(self,
+               center: ArrayLike,
+               temperature: Optional[ArrayLike] = None,
+               eps: float = 1e-20) -> Array:
     p = self.bin_prob(center, temperature)
     p = jnp.maximum(p, eps)
     return jnp.log(p) / -jnp.log(2.0)
 
 
-class RealMappedFourierBasisEntropyModel(continuous.ContinuousEntropyModel):
+class RealMappedFourierEntropyModelBase(continuous.ContinuousEntropyModel):
   """Fourier basis entropy model mapped to the real line."""
-  real: Array
-  imag: Array
-  scale: Array
-  offset: Array
-
-  def __init__(self,
-               rng,
-               num_pdfs: int,
-               num_freqs: int = 10,
-               init_scale: float = 1e-3):
-    """Initializes the entropy model.
-
-    Args:
-      rng: Random number generator key for initialization.
-      num_pdfs: Integer. The number of distinct scalar PDFs on the right of the
-        input array. These are treated as independent, but non-identically
-        distributed. The remaining array elements on the left are treated as
-        i.i.d. (like in a batch dimension).
-      num_freqs: Integer. Number of frequency components of the Fourier series.
-      init_scale: Float. Scale of normal distribution for random initialization
-        of coefficients.
-    """
-    super().__init__()
-    self.real, self.imag = init_scale * jax.random.normal(
-        rng, (2, num_pdfs, num_freqs))
-    self.scale = jnp.ones((num_pdfs,))
-    self.offset = jnp.zeros((num_pdfs,))
 
   def prob(self, x: ArrayLike) -> Array:
     # Get and transform model parameters.
@@ -243,3 +186,4 @@ class RealMappedFourierBasisEntropyModel(continuous.ContinuousEntropyModel):
     p = self.bin_prob(center, temperature)
     p = jnp.maximum(p, eps)
     return jnp.log(p) / -jnp.log(2.)
+# pytype:enable=attribute-error

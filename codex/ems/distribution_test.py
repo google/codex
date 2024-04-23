@@ -14,22 +14,24 @@
 # ==============================================================================
 """Tests for distribution entropy model."""
 
-from typing import Any
+import dataclasses
 import chex
 from codex.ems import distribution
 import distrax
 import jax
 import jax.numpy as jnp
 
+ArrayLike = jax.typing.ArrayLike
 
 # TODO(jonycgn): Improve unit tests.
 
 
 class TestNormalDistribution:
 
+  @dataclasses.dataclass
   class EntropyModel(distribution.DistributionEntropyModel):
-    loc: Any
-    scale: Any
+    loc: ArrayLike
+    scale: ArrayLike
 
     @property
     def distribution(self):
@@ -106,9 +108,10 @@ class TestNormalDistribution:
 
 class TestZeroMeanDistribution(TestNormalDistribution):
 
+  @dataclasses.dataclass
   class EntropyModel(distribution.DistributionEntropyModel):
-    loc: Any
-    scale: Any
+    loc: ArrayLike
+    scale: ArrayLike
 
     even_symmetric = True
 
@@ -119,9 +122,10 @@ class TestZeroMeanDistribution(TestNormalDistribution):
 
 class TestLogisticDistribution(TestNormalDistribution):
 
+  @dataclasses.dataclass
   class EntropyModel(distribution.DistributionEntropyModel):
-    loc: Any
-    scale: Any
+    loc: ArrayLike
+    scale: ArrayLike
 
     @property
     def distribution(self):
@@ -130,9 +134,10 @@ class TestLogisticDistribution(TestNormalDistribution):
 
 class TestLaplaceDistribution(TestNormalDistribution):
 
+  @dataclasses.dataclass
   class EntropyModel(distribution.DistributionEntropyModel):
-    loc: Any
-    scale: Any
+    loc: ArrayLike
+    scale: ArrayLike
 
     @property
     def distribution(self):

@@ -15,7 +15,7 @@
 """Tests of deep factorized entropy model."""
 
 import chex
-from codex.ems import deep_factorized
+from codex.ems import equinox
 import distrax
 import jax
 import jax.numpy as jnp
@@ -28,8 +28,8 @@ import jax.numpy as jnp
 def test_logistic_is_special_case():
   # With no hidden units, the density should collapse to a logistic
   # distribution convolved with a standard uniform distribution.
-  em = deep_factorized.DeepFactorizedEntropyModel(
-      jax.random.PRNGKey(0), num_pdfs=1, features=(), init_scale=1)
+  em = equinox.DeepFactorizedEntropyModel(
+      jax.random.PRNGKey(0), num_pdfs=1, num_units=(), init_scale=1)
   x = jnp.linspace(-5., 5., 30)[:, None]
   prob_em = em.bin_prob(x)
   logistic = distrax.Logistic(loc=-em.cdf_logits.biases[0][0, 0], scale=1.)
@@ -40,7 +40,7 @@ def test_logistic_is_special_case():
 def test_uniform_is_special_case():
   # With the scale parameter going to zero, the density should approach a
   # unit-width uniform distribution.
-  em = deep_factorized.DeepFactorizedEntropyModel(
+  em = equinox.DeepFactorizedEntropyModel(
       jax.random.PRNGKey(0), num_pdfs=1, init_scale=1e-6)
   x = jnp.linspace(-1., 1., 10)[:, None]
   prob = em.bin_prob(x)
@@ -50,8 +50,8 @@ def test_uniform_is_special_case():
 
 
 def test_bin_prob_and_bits_are_consistent():
-  em = deep_factorized.DeepFactorizedEntropyModel(
-      jax.random.PRNGKey(0), num_pdfs=1, features=(2, 3))
+  em = equinox.DeepFactorizedEntropyModel(
+      jax.random.PRNGKey(0), num_pdfs=1, num_units=(2, 3))
   x = jnp.linspace(-5., 5., 30)[:, None]
   prob = em.bin_prob(x)
   bits = em.bin_bits(x)

@@ -21,7 +21,6 @@ keywords = [
     "compression", "data-compression", "machine-learning", "deep-learning",
 ]
 dependencies = [
-    "equinox ~=0.11",
     "jax ~=0.4,>=0.4.25",
 ]
 dynamic = ["version", "description"]
