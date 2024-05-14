@@ -197,7 +197,7 @@ class RangeAnsStack:
       A new updated stack.
     """
     dtype = jnp.uint32
-    lower, upper = jax.tree_map(lambda u: jnp.asarray(u, dtype), bound)
+    lower, upper = jax.tree.map(lambda u: jnp.asarray(u, dtype), bound)
     precision = jnp.asarray(precision, dtype)
     chex.assert_rank([lower, upper, precision], 0)
 
@@ -278,7 +278,7 @@ class RangeAnsStack:
     Returns:
       A new updated stack.
     """
-    value = jax.tree_map(jnp.asarray, value)
+    value = jax.tree.map(jnp.asarray, value)
     value, _ = jax.tree_util.tree_flatten(value)
     if len(value) == 2:
       def body_fn(stack, value):
@@ -457,7 +457,7 @@ def _range_ans_stack_make_decoder(qmfs: Sequence[np.ndarray]) -> np.ndarray:
     raise ValueError("No quantized pmf in the list.")
 
   n = len(qmfs)
-  qmfs = jax.tree_map(np.asarray, qmfs)
+  qmfs = jax.tree.map(np.asarray, qmfs)
 
   if any(np.any(qmf < 0) for qmf in qmfs):
     raise ValueError("Quantized pmf contains a negative number.")
