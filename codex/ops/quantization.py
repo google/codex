@@ -15,12 +15,15 @@
 """Quantization operations."""
 
 import functools
+from typing import Optional
 import jax
-from jax import nn
 from jax import numpy as jnp
 
+Array = jax.Array
+ArrayLike = jax.typing.ArrayLike
 
-def soft_round(x, temperature):
+
+def soft_round(x: ArrayLike, temperature: Optional[ArrayLike]) -> Array:
   """Differentiable approximation to `jnp.round`.
 
   Lower temperatures correspond to closer approximations of the round function.
@@ -63,7 +66,7 @@ def soft_round(x, temperature):
   )
 
 
-def soft_round_inverse(x, temperature):
+def soft_round_inverse(x: ArrayLike, temperature: Optional[ArrayLike]) -> Array:
   """Inverse of `soft_round`.
 
   This function is described in Sec. 4.1 of the paper
@@ -103,7 +106,8 @@ def soft_round_inverse(x, temperature):
   )
 
 
-def soft_round_conditional_mean(x, temperature):
+def soft_round_conditional_mean(x: ArrayLike,
+                                temperature: Optional[ArrayLike]) -> Array:
   """Conditional mean of inputs given noisy soft rounded values.
 
   Computes `g(z) = E[X | Q(X) + U = z]` where `Q` is the soft-rounding function,
@@ -126,12 +130,12 @@ def soft_round_conditional_mean(x, temperature):
 
 
 @functools.partial(jax.custom_jvp, nondiff_argnums=(2,))
-def ste_argmax(logits, temperature, axis=-1):
+def ste_argmax(logits: Array, temperature: Array, axis=-1) -> Array:
   """`argmax` with straight-through gradient estimation.
 
   The gradient of this function is overridden to be the gradient of:
   ```
-  nn.softmax(logits / temperature, axis)
+  jax.nn.softmax(logits / temperature, axis)
   ```
 
   Args:
@@ -144,7 +148,8 @@ def ste_argmax(logits, temperature, axis=-1):
   """
   del temperature  # unused in forward pass
   index = jnp.argmax(logits, axis=axis)
-  return nn.one_hot(index, logits.shape[axis], axis=axis, dtype=logits.dtype)
+  return jax.nn.one_hot(
+      index, logits.shape[axis], axis=axis, dtype=logits.dtype)
 
 
 @ste_argmax.defjvp
@@ -152,13 +157,13 @@ def ste_argmax_jvp(axis, primals, tangents):
   logits, temperature = primals
   logits_dot, _ = tangents
   _, argmax_dot = jax.jvp(
-      lambda l: nn.softmax(l / temperature, axis=axis),
+      lambda l: jax.nn.softmax(l / temperature, axis=axis),
       (logits,), (logits_dot,))
   return ste_argmax(logits, temperature), argmax_dot
 
 
 @jax.custom_jvp
-def ste_round(x):
+def ste_round(x: ArrayLike) -> Array:
   """`jnp.round` with straight-through gradient estimation."""
   return jnp.round(x)
 
