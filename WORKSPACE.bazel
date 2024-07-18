@@ -28,9 +28,9 @@ http_archive(
 http_archive(
     name = "pybind11",
     build_file = "@pybind11_bazel//:pybind11.BUILD",
-    sha256 = "b011a730c8845bfc265f0f81ee4e5e9e1d354df390836d2a25880e123d021f89",
-    strip_prefix = "pybind11-2.11.1",
-    urls = ["https://github.com/pybind/pybind11/archive/v2.11.1.zip"],
+    sha256 = "a3c9ea1225cb731b257f2759a0c12164db8409c207ea5cf851d4b95679dda072",
+    strip_prefix = "pybind11-2.13.1",
+    urls = ["https://github.com/pybind/pybind11/archive/v2.13.1.zip"],
 )
 
 load("@pybind11_bazel//:python_configure.bzl", "python_configure")
