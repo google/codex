@@ -1,4 +1,4 @@
-# Copyright 2022 CoDeX authors.
+# Copyright 2024 CoDeX authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,14 +12,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Operations."""
+"""Activation functions."""
 
-from codex.ops.activation import verysoftplus
-from codex.ops.gradient import lower_limit
-from codex.ops.gradient import perturb_and_apply
-from codex.ops.gradient import upper_limit
-from codex.ops.quantization import soft_round
-from codex.ops.quantization import soft_round_conditional_mean
-from codex.ops.quantization import soft_round_inverse
-from codex.ops.quantization import ste_argmax
-from codex.ops.quantization import ste_round
+import jax
+from jax import numpy as jnp
+
+Array = jax.Array
+ArrayLike = jax.typing.ArrayLike
+
+
+def verysoftplus(x: ArrayLike) -> Array:
+  """An activation function symmetric wrt. division and multiplication.
+
+  Defined as `1+x` for `x > 0` and `1/(1-x)` for `x < 0`. This implies:
+  ```
+  1/verysoftplus(x) = verysoftplus(-x)
+  ```
+  Args:
+    x: Array, the argument of the function.
+
+  Returns:
+    the function value of `x`, evaluated elementwise.
+  """
+  x_neg = jnp.minimum(x, 0)
+  return jnp.where(x > 0, x + 1, 1 / (1 - x_neg))
