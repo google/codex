@@ -22,7 +22,7 @@ from jax import random
 import jax.numpy as jnp
 import pytest
 
-# TODO(jonycgn): Improve unit tests.
+# TODO(jonarchist): Improve unit tests.
 
 
 @pytest.mark.parametrize("t", [0.2, 1.0, jnp.inf])

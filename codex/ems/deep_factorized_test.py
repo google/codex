@@ -20,7 +20,7 @@ import distrax
 import jax
 import jax.numpy as jnp
 
-# TODO(jonycgn): Improve unit tests, e.g. check that the distribution is
+# TODO(jonarchist): Improve unit tests, e.g. check that the distribution is
 # normalized, that expected value of `bin_bits` with noise is an upper bound
 # on it without noise, ...
 

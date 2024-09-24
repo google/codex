@@ -9,8 +9,8 @@ fraction of model performance.
 
 For a more in-depth introduction from a classical data compression perspective,
 consider our [paper on nonlinear transform
-coding](https://arxiv.org/abs/2007.03034), or watch @jonycgn's [talk on learned
-image compression](https://www.youtube.com/watch?v=x_q7cZviXkY). For an
+coding](https://arxiv.org/abs/2007.03034), or watch @jonarchist's [talk on
+learned image compression](https://www.youtube.com/watch?v=x_q7cZviXkY). For an
 introduction to lossy data compression from a machine learning perspective, take
 a look at @yiboyang's [review paper](https://arxiv.org/abs/2202.06533).
 
@@ -53,7 +53,7 @@ import codex as cdx
 If you use this library for research purposes, please cite:
 ```
 @software{codex_github,
-  author = "Ballé, Johannes and Hwang, Sung Jin and Agustsson, Eirikur",
+  author = "Ballé, Jona and Hwang, Sung Jin and Agustsson, Eirikur",
   title = "{CoDeX}: Learned Data Compression in {JAX}",
   url = "http://github.com/google/codex",
   version = "0.0.1",

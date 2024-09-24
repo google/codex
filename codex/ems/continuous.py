@@ -20,9 +20,9 @@ import jax.numpy as jnp
 
 Array = jax.Array
 ArrayLike = jax.typing.ArrayLike
-DType = Any  # TODO(jonycgn): Add DType annotation once it exists.
+DType = Any  # TODO(jonarchist): Add DType annotation once it exists.
 
-# TODO(jonycgn): Think through shape contracts and broadcasting for all methods
+# TODO(jonarchist): Think through shape contracts and broadcasting for all methods
 # of this interface.
 
 

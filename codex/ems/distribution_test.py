@@ -23,7 +23,7 @@ import jax.numpy as jnp
 
 ArrayLike = jax.typing.ArrayLike
 
-# TODO(jonycgn): Improve unit tests.
+# TODO(jonarchist): Improve unit tests.
 
 
 class TestNormalDistribution:
