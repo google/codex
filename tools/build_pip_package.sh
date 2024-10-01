@@ -16,7 +16,7 @@ python --version
 # Run all tests registered to bazel.
 # Currently there is no test configured in bazel. The following line
 # ends in error status if no test is found.
-# bazel test -c opt //... --test_output=all
+bazel test -c opt //... --test_output=all
 
 # Build the C++ library file.
 bazel build -c opt --verbose_failures //codex/cc:range_ans_pybind.so

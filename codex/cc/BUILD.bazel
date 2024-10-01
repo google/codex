@@ -17,6 +17,23 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "range_ans_test",
+    srcs = ["range_ans_test.cc"],
+    deps = [
+        ":range_ans",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/numeric:bits",
+        "@com_google_absl//absl/random",
+        "@com_google_absl//absl/random:distributions",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 pybind_extension(
     name = "range_ans_pybind",
     srcs = ["range_ans_pybind.cc"],
